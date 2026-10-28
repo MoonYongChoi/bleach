@@ -22,6 +22,13 @@ function DdayLabel({ deadlineDate }: { deadlineDate: string | null }) {
 
 export function CampaignCard({ campaign }: { campaign: Campaign }) {
   const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
+  const metaParts = [
+    region || null,
+    campaign.deadline_date ? `~${campaign.deadline_date.slice(5).replace("-", ".")} 모집` : null,
+    campaign.recruit_count !== null
+      ? `신청 ${campaign.applicant_count ?? "?"} / 모집 ${campaign.recruit_count}명`
+      : null,
+  ].filter(Boolean);
 
   return (
     <a
@@ -57,11 +64,13 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
         {campaign.description && (
           <p className="line-clamp-1 text-xs text-muted-foreground">{campaign.description}</p>
         )}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          {region && <span>{region}</span>}
-          {campaign.deadline_date && (
-            <span>~{campaign.deadline_date.slice(5).replace("-", ".")} 모집</span>
-          )}
+        <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          {metaParts.map((part, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              {i > 0 && <span className="text-border">·</span>}
+              {part}
+            </span>
+          ))}
         </div>
       </div>
     </a>

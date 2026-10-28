@@ -6,19 +6,20 @@
 
 환경변수 REVU_ID / REVU_PW 필요 (.env.local).
 
-구조 메모 (2026-10-07 조사):
+구조 메모 (2026-10-28 재조사):
 - 로그인: POST 없이 /login 페이지의 input[name=email], input[name=password] +
   "로그인" 버튼 클릭으로 처리 (reCAPTCHA는 이번 조사에서는 나타나지 않았음).
 - 목록: /category/제품, /category/지역 (로그인 필요). 카드 구조:
     <a href="/campaign/ID">
-      ...
-      <p class="card-title">제목</p>
-      ...
+      <img class="thumb-img" src="...">
+      <p class="card-title">[괄호 프리픽스] 제목</p>
+      <p class="card-desc">제공내역</p>
       <strong class="card-status">N일 남음 | 마감 임박 | 모집마감 | ...</strong>
-      ...
+      "신청 123 / 10명"  (고유 클래스 없이 텍스트로만 존재 — innerText로 추출)
     </a>
-- 정확한 마감 "일수"만 주어지고 날짜/지역은 구조화되어 있지 않음 → 제목에서
-  "[지역]" 괄호 프리픽스를 best-effort로 추출.
+  "[괄호 프리픽스]"는 카테고리에 따라 의미가 다르다 — /category/지역은 지역명,
+  /category/제품은 업체/브랜드명이다.
+- 정확한 마감 "일수"만 주어지고 날짜는 구조화되어 있지 않음.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ import os
 import re
 from datetime import date, timedelta
 from typing import Optional
+from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright
 
@@ -35,8 +37,9 @@ from regions import resolve_region
 BASE_URL = "https://www.revu.net"
 CATEGORIES = ["제품", "지역"]
 
-REGION_PREFIX_RE = re.compile(r"^\[([^\]]+)\]")
+BRACKET_PREFIX_RE = re.compile(r"^\[([^\]]+)\]\s*")
 DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*남음")
+APPLICANT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*(\d+)\s*명")
 
 
 def _login(context) -> bool:
@@ -93,7 +96,10 @@ def fetch_campaigns() -> list[dict]:
                     .map(el => ({
                         href: el.getAttribute('href'),
                         title: el.querySelector('.card-title')?.textContent?.trim() || null,
-                        status: el.querySelector('.card-status')?.textContent?.trim() || ''
+                        desc: el.querySelector('.card-desc')?.textContent?.trim() || null,
+                        status: el.querySelector('.card-status')?.textContent?.trim() || '',
+                        image: el.querySelector('img.thumb-img')?.getAttribute('src') || null,
+                        text: el.innerText || ''
                     }))""",
             )
 
@@ -107,18 +113,30 @@ def fetch_campaigns() -> list[dict]:
                 seen_ids.add(cid)
 
                 deadline_date = _parse_deadline(card["status"])
-                if deadline_date is None and card["status"]:
-                    # 마감 관련 문구가 아예 없으면(예: 신청자 수 표기 등) 그대로 두되,
-                    # "모집마감"류는 _parse_deadline에서 이미 걸러짐.
-                    pass
 
                 title = card["title"]
-                region = None
+                bracket = None
                 if title:
-                    rm = REGION_PREFIX_RE.match(title)
-                    if rm:
-                        region = rm.group(1)
-                region_sido, region_gugun = resolve_region(region)
+                    bm = BRACKET_PREFIX_RE.match(title)
+                    if bm:
+                        bracket = bm.group(1)
+                        title = title[bm.end():].strip() or title
+
+                # /category/지역의 괄호는 지역명, /category/제품의 괄호는 업체명이다.
+                if category == "지역":
+                    region_sido, region_gugun = resolve_region(bracket)
+                    vendor = None
+                else:
+                    region_sido, region_gugun = None, None
+                    vendor = bracket
+
+                applicant_count = recruit_count = None
+                am = APPLICANT_RE.search(card["text"])
+                if am:
+                    applicant_count = int(am.group(1).replace(",", ""))
+                    recruit_count = int(am.group(2))
+
+                image_url = urljoin(BASE_URL, card["image"]) if card["image"] else None
 
                 campaigns.append(
                     {
@@ -130,11 +148,11 @@ def fetch_campaigns() -> list[dict]:
                         "announce_date": None,
                         "source_url": f"{BASE_URL}/campaign/{cid}",
                         "category": category,
-                        "description": None,
-                        "image_url": None,
-                        "vendor": None,
-                        "recruit_count": None,
-                        "applicant_count": None,
+                        "description": card["desc"],
+                        "image_url": image_url,
+                        "vendor": vendor,
+                        "recruit_count": recruit_count,
+                        "applicant_count": applicant_count,
                     }
                 )
 
