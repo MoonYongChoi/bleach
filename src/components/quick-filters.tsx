@@ -10,11 +10,12 @@ function multiLabel(fallback: string, items: string[]) {
   return `${items[0]} 외 ${items.length - 1}`;
 }
 
-const APPLY_RATE_LABELS: Record<string, string> = {
-  "0:0.3": "지원률 30% 미만",
-  "0.3:1": "지원률 30~100%",
-  "1:Infinity": "지원률 100%+",
-};
+function formatApplyRateLabel(range: FilterState["applyRate"]) {
+  if (!range) return "지원률";
+  const min = Math.round(range.min * 100);
+  if (range.max === Infinity) return `지원률 ${min}%+`;
+  return `지원률 ${min}~${Math.round(range.max * 100)}%`;
+}
 
 export function QuickFilters({
   value,
@@ -22,12 +23,10 @@ export function QuickFilters({
   onToggleSort,
 }: {
   value: FilterState;
-  onOpenTab: (tab: "region" | "category" | "vendor" | "applyRate") => void;
+  onOpenTab: (tab: "region" | "category" | "platform" | "applyRate") => void;
   onToggleSort: () => void;
 }) {
-  const applyRateLabel = value.applyRate
-    ? (APPLY_RATE_LABELS[`${value.applyRate.min}:${value.applyRate.max}`] ?? "지원률")
-    : "지원률";
+  const applyRateLabel = formatApplyRateLabel(value.applyRate);
 
   return (
     <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-2.5">
@@ -39,8 +38,8 @@ export function QuickFilters({
         {multiLabel("카테고리", value.categories)}
         <ChevronDownIcon className="size-3.5" />
       </Chip>
-      <Chip onClick={() => onOpenTab("vendor")}>
-        {multiLabel("업체", value.vendors)}
+      <Chip onClick={() => onOpenTab("platform")}>
+        {multiLabel("업체", value.platforms)}
         <ChevronDownIcon className="size-3.5" />
       </Chip>
       <Chip active={value.applyRate !== null} onClick={() => onOpenTab("applyRate")}>

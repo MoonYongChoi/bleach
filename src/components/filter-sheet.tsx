@@ -9,15 +9,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import type { ApplyRateRange, SortOption } from "@/lib/campaigns";
+import { Slider } from "@/components/ui/slider";
+import { PLATFORMS, type ApplyRateRange, type SortOption } from "@/lib/campaigns";
 import { cn } from "cn";
 
-type Tab = "region" | "category" | "vendor" | "applyRate" | "sort";
+type Tab = "region" | "category" | "platform" | "applyRate" | "sort";
 
 export interface FilterState {
   sidos: string[];
   categories: string[];
-  vendors: string[];
+  platforms: string[];
   applyRate: ApplyRateRange | null;
   sort: SortOption;
 }
@@ -25,20 +26,16 @@ export interface FilterState {
 export const EMPTY_FILTER_STATE: FilterState = {
   sidos: [],
   categories: [],
-  vendors: [],
+  platforms: [],
   applyRate: null,
   sort: "latest",
 };
 
-const APPLY_RATE_PRESETS: { label: string; range: ApplyRateRange }[] = [
-  { label: "30% 미만 (여유)", range: { min: 0, max: 0.3 } },
-  { label: "30~100%", range: { min: 0.3, max: 1 } },
-  { label: "100% 이상 (경쟁 치열)", range: { min: 1, max: Infinity } },
-];
+// 지원률 슬라이더 범위: 0~200%. 오른쪽 끝(2)에 두면 "200% 이상"까지 무제한으로 연다.
+const APPLY_RATE_SLIDER_MAX = 2;
 
-function sameRange(a: ApplyRateRange | null, b: ApplyRateRange | null) {
-  if (a === null || b === null) return a === b;
-  return a.min === b.min && a.max === b.max;
+function formatRate(value: number) {
+  return value >= APPLY_RATE_SLIDER_MAX ? `${Math.round(value * 100)}%+` : `${Math.round(value * 100)}%`;
 }
 
 export function FilterSheet({
@@ -47,7 +44,6 @@ export function FilterSheet({
   initialTab,
   sidoOptions,
   categoryOptions,
-  vendorOptions,
   value,
   onApply,
 }: {
@@ -56,7 +52,6 @@ export function FilterSheet({
   initialTab: Tab;
   sidoOptions: string[];
   categoryOptions: string[];
-  vendorOptions: string[];
   value: FilterState;
   onApply: (next: FilterState) => void;
 }) {
@@ -78,6 +73,10 @@ export function FilterSheet({
     return list.includes(item) ? list.filter((v) => v !== item) : [...list, item];
   }
 
+  const sliderValue: [number, number] = draft.applyRate
+    ? [draft.applyRate.min, Math.min(draft.applyRate.max, APPLY_RATE_SLIDER_MAX)]
+    : [0, APPLY_RATE_SLIDER_MAX];
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-2xl">
@@ -90,7 +89,7 @@ export function FilterSheet({
             [
               ["region", "지역"],
               ["category", "카테고리"],
-              ["vendor", "업체"],
+              ["platform", "업체"],
               ["applyRate", "지원률"],
               ["sort", "마감임박순"],
             ] as const
@@ -145,22 +144,19 @@ export function FilterSheet({
             </div>
           )}
 
-          {tab === "vendor" && (
+          {tab === "platform" && (
             <div>
-              <p className="mb-2 text-xs text-muted-foreground">
-                체험단 업체 (복수 선택 가능 · 데이터가 있는 업체만 표시)
-              </p>
+              <p className="mb-2 text-xs text-muted-foreground">체험단 업체 (복수 선택 가능)</p>
               <div className="flex flex-wrap gap-2">
-                {vendorOptions.length === 0 && (
-                  <p className="text-sm text-muted-foreground">선택 가능한 업체 정보가 없어요</p>
-                )}
-                {vendorOptions.map((vendor) => (
+                {PLATFORMS.map((platform) => (
                   <ChipButton
-                    key={vendor}
-                    active={draft.vendors.includes(vendor)}
-                    onClick={() => setDraft((d) => ({ ...d, vendors: toggle(d.vendors, vendor) }))}
+                    key={platform}
+                    active={draft.platforms.includes(platform)}
+                    onClick={() =>
+                      setDraft((d) => ({ ...d, platforms: toggle(d.platforms, platform) }))
+                    }
                   >
-                    {vendor}
+                    {platform}
                   </ChipButton>
                 ))}
               </div>
@@ -168,27 +164,37 @@ export function FilterSheet({
           )}
 
           {tab === "applyRate" && (
-            <div className="flex flex-col gap-2">
-              <p className="mb-1 text-xs text-muted-foreground">
-                지원률 = 현재 신청인원 ÷ 모집인원 (데이터가 있는 체험단만 대상)
+            <div className="flex flex-col gap-4">
+              <p className="text-xs text-muted-foreground">
+                지원률 = 현재 신청인원 ÷ 모집인원 (데이터가 있는 체험단만 대상). 바를 드래그해서
+                범위를 고르세요.
               </p>
-              <ChipButton
-                full
-                active={draft.applyRate === null}
-                onClick={() => setDraft((d) => ({ ...d, applyRate: null }))}
-              >
-                전체
-              </ChipButton>
-              {APPLY_RATE_PRESETS.map((preset) => (
-                <ChipButton
-                  key={preset.label}
-                  full
-                  active={sameRange(draft.applyRate, preset.range)}
-                  onClick={() => setDraft((d) => ({ ...d, applyRate: preset.range }))}
+              <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+                <span>{formatRate(sliderValue[0])}</span>
+                <span>{formatRate(sliderValue[1])}</span>
+              </div>
+              <Slider
+                min={0}
+                max={APPLY_RATE_SLIDER_MAX}
+                step={0.05}
+                minStepsBetweenValues={1}
+                value={sliderValue}
+                onValueChange={(next) => {
+                  const [min, max] = next as number[];
+                  setDraft((d) => ({
+                    ...d,
+                    applyRate: { min, max: max >= APPLY_RATE_SLIDER_MAX ? Infinity : max },
+                  }));
+                }}
+              />
+              {draft.applyRate && (
+                <button
+                  onClick={() => setDraft((d) => ({ ...d, applyRate: null }))}
+                  className="self-start text-xs text-muted-foreground underline underline-offset-2"
                 >
-                  {preset.label}
-                </ChipButton>
-              ))}
+                  전체로 초기화
+                </button>
+              )}
             </div>
           )}
 

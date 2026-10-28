@@ -8,7 +8,7 @@ import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { EmptyState } from "@/components/empty-state";
 import { fetchCampaigns, fetchFilterOptions, type Campaign } from "@/lib/campaigns";
 
-type SheetTab = "region" | "category" | "vendor" | "applyRate";
+type SheetTab = "region" | "category" | "platform" | "applyRate";
 
 export default function Home() {
   const [search, setSearch] = useState("");
@@ -18,8 +18,7 @@ export default function Home() {
   const [filterOptions, setFilterOptions] = useState<{
     sidos: string[];
     categories: string[];
-    vendors: string[];
-  }>({ sidos: [], categories: [], vendors: [] });
+  }>({ sidos: [], categories: [] });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +40,7 @@ export default function Home() {
       search: debouncedSearch,
       sidos: filters.sidos,
       categories: filters.categories,
-      vendors: filters.vendors,
+      platforms: filters.platforms,
       applyRate: filters.applyRate ?? undefined,
       sort: filters.sort,
     })
@@ -82,7 +81,6 @@ export default function Home() {
         initialTab={sheetTab ?? "region"}
         sidoOptions={filterOptions.sidos}
         categoryOptions={filterOptions.categories}
-        vendorOptions={filterOptions.vendors}
         value={filters}
         onApply={setFilters}
       />

@@ -29,10 +29,13 @@ export interface CampaignFilters {
   search?: string;
   sidos?: string[];
   categories?: string[];
-  vendors?: string[];
+  platforms?: string[];
   applyRate?: ApplyRateRange;
   sort?: SortOption;
 }
+
+/** 체험단 플랫폼 — 스크래퍼가 고정으로 다루는 3곳이라 DB 조회 없이 상수로 둔다. */
+export const PLATFORMS = ["레뷰", "파블로", "리뷰노트"] as const;
 
 const SELECT_COLUMNS =
   "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, description, image_url, vendor, recruit_count, applicant_count, created_at";
@@ -51,8 +54,8 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
   if (filters.categories && filters.categories.length > 0) {
     query = query.in("category", filters.categories);
   }
-  if (filters.vendors && filters.vendors.length > 0) {
-    query = query.in("vendor", filters.vendors);
+  if (filters.platforms && filters.platforms.length > 0) {
+    query = query.in("platform", filters.platforms);
   }
 
   if (filters.sort === "deadline") {
@@ -81,23 +84,20 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
 export async function fetchFilterOptions(): Promise<{
   sidos: string[];
   categories: string[];
-  vendors: string[];
 }> {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("region_sido, category, vendor")
+    .select("region_sido, category")
     .eq("is_active", true);
   if (error) throw error;
 
   const sidos = new Set<string>();
   const categories = new Set<string>();
-  const vendors = new Set<string>();
   for (const row of data ?? []) {
     if (row.region_sido) sidos.add(row.region_sido);
     if (row.category) categories.add(row.category);
-    if (row.vendor) vendors.add(row.vendor);
   }
-  return { sidos: [...sidos].sort(), categories: [...categories].sort(), vendors: [...vendors].sort() };
+  return { sidos: [...sidos].sort(), categories: [...categories].sort() };
 }
 
 /** 지원률 = 현재 신청(대기)인원 / 전체 모집인원. 둘 중 하나라도 없으면 null. */
