@@ -12,10 +12,12 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
 
 UPSERT_SQL = """
 insert into public.campaigns
-    (platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category)
+    (platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category,
+     description, image_url, vendor, recruit_count, applicant_count)
 values
     (%(platform)s, %(title)s, %(region_sido)s, %(region_gugun)s, %(deadline_date)s,
-     %(announce_date)s, %(source_url)s, %(category)s)
+     %(announce_date)s, %(source_url)s, %(category)s, %(description)s, %(image_url)s,
+     %(vendor)s, %(recruit_count)s, %(applicant_count)s)
 on conflict (source_url) do update set
     title = excluded.title,
     region_sido = excluded.region_sido,
@@ -23,12 +25,29 @@ on conflict (source_url) do update set
     deadline_date = excluded.deadline_date,
     announce_date = excluded.announce_date,
     category = excluded.category,
+    description = excluded.description,
+    image_url = excluded.image_url,
+    vendor = excluded.vendor,
+    recruit_count = excluded.recruit_count,
+    applicant_count = excluded.applicant_count,
     is_active = true;
 """
 
+_DEFAULTS = {
+    "description": None,
+    "image_url": None,
+    "vendor": None,
+    "recruit_count": None,
+    "applicant_count": None,
+}
+
 
 def upsert_campaigns(campaigns: list[dict]) -> int:
-    rows = [c for c in campaigns if c.get("source_url") and c.get("title")]
+    rows = [
+        {**_DEFAULTS, **c}
+        for c in campaigns
+        if c.get("source_url") and c.get("title")
+    ]
     if not rows:
         return 0
 

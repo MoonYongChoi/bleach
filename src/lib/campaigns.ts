@@ -10,23 +10,37 @@ export interface Campaign {
   announce_date: string | null;
   source_url: string;
   category: string | null;
+  description: string | null;
+  image_url: string | null;
+  vendor: string | null;
+  recruit_count: number | null;
+  applicant_count: number | null;
   created_at: string;
 }
 
 export type SortOption = "deadline" | "latest";
 
+export interface ApplyRateRange {
+  min: number;
+  max: number;
+}
+
 export interface CampaignFilters {
   search?: string;
   sidos?: string[];
   categories?: string[];
+  vendors?: string[];
+  applyRate?: ApplyRateRange;
   sort?: SortOption;
 }
 
+const SELECT_COLUMNS =
+  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, description, image_url, vendor, recruit_count, applicant_count, created_at";
+
 export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Campaign[]> {
-  let query = supabase
-    .from("campaigns")
-    .select("id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, created_at")
-    .eq("is_active", true);
+  // 지역/카테고리/업체/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
+  // 연속된 .in()/.ilike() 호출은 SQL WHERE ... AND ... 로 합쳐진다).
+  let query = supabase.from("campaigns").select(SELECT_COLUMNS).eq("is_active", true);
 
   if (filters.search) {
     query = query.ilike("title", `%${filters.search}%`);
@@ -37,6 +51,9 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
   if (filters.categories && filters.categories.length > 0) {
     query = query.in("category", filters.categories);
   }
+  if (filters.vendors && filters.vendors.length > 0) {
+    query = query.in("vendor", filters.vendors);
+  }
 
   if (filters.sort === "deadline") {
     query = query.order("deadline_date", { ascending: true, nullsFirst: false });
@@ -44,25 +61,49 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
     query = query.order("created_at", { ascending: false });
   }
 
-  const { data, error } = await query.limit(100);
+  // 테이블이 아직 작아서(수백 건) 넉넉히 받아온 뒤 지원률은 클라이언트에서 추가로
+  // 거른다. 같은 스크래핑 배치로 들어온 행은 created_at이 트랜잭션 단위로 동일해서,
+  // limit을 너무 타이트하게 두면 동점 처리 순서상 특정 행들이 통째로 잘릴 수 있다.
+  const { data, error } = await query.limit(1000);
   if (error) throw error;
-  return data ?? [];
+
+  // 지원률(applicant_count / recruit_count)은 계산된 값이라 PostgREST where절로
+  // 못 걸러서, 위 필터들과 AND로 합쳐지도록 클라이언트에서 한 번 더 좁힌다.
+  const rows = data ?? [];
+  if (!filters.applyRate) return rows;
+  return rows.filter((row) => {
+    const rate = applyRate(row);
+    if (rate === null) return false;
+    return rate >= filters.applyRate!.min && rate <= filters.applyRate!.max;
+  });
 }
 
-export async function fetchFilterOptions(): Promise<{ sidos: string[]; categories: string[] }> {
+export async function fetchFilterOptions(): Promise<{
+  sidos: string[];
+  categories: string[];
+  vendors: string[];
+}> {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("region_sido, category")
+    .select("region_sido, category, vendor")
     .eq("is_active", true);
   if (error) throw error;
 
   const sidos = new Set<string>();
   const categories = new Set<string>();
+  const vendors = new Set<string>();
   for (const row of data ?? []) {
     if (row.region_sido) sidos.add(row.region_sido);
     if (row.category) categories.add(row.category);
+    if (row.vendor) vendors.add(row.vendor);
   }
-  return { sidos: [...sidos].sort(), categories: [...categories].sort() };
+  return { sidos: [...sidos].sort(), categories: [...categories].sort(), vendors: [...vendors].sort() };
+}
+
+/** 지원률 = 현재 신청(대기)인원 / 전체 모집인원. 둘 중 하나라도 없으면 null. */
+export function applyRate(campaign: Pick<Campaign, "recruit_count" | "applicant_count">): number | null {
+  if (!campaign.recruit_count || campaign.applicant_count === null) return null;
+  return campaign.applicant_count / campaign.recruit_count;
 }
 
 export function dDay(deadlineDate: string | null): number | null {

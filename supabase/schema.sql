@@ -23,6 +23,15 @@ create table if not exists public.campaigns (
 
   category text,
 
+  -- 6. 제공내역(체험단 상세 혜택 설명) / 목록 썸네일
+  description text,
+  image_url text,
+
+  -- 7. 업체명 / 지원 현황 (지원률 = applicant_count / recruit_count)
+  vendor text,
+  recruit_count integer,
+  applicant_count integer,
+
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

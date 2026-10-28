@@ -3,27 +3,23 @@
 import { useEffect, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { QuickFilters } from "@/components/quick-filters";
-import { FilterSheet, type FilterState } from "@/components/filter-sheet";
-import { CampaignCard, CampaignCardSkeleton, AdCard } from "@/components/campaign-card";
+import { FilterSheet, EMPTY_FILTER_STATE, type FilterState } from "@/components/filter-sheet";
+import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { EmptyState } from "@/components/empty-state";
-import { BottomBanner } from "@/components/bottom-banner";
 import { fetchCampaigns, fetchFilterOptions, type Campaign } from "@/lib/campaigns";
 
-const AD_SLOT_INTERVAL = 5;
+type SheetTab = "region" | "category" | "vendor" | "applyRate";
 
 export default function Home() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [filters, setFilters] = useState<FilterState>({
-    sidos: [],
-    categories: [],
-    sort: "latest",
-  });
-  const [sheetTab, setSheetTab] = useState<"region" | "category" | null>(null);
-  const [filterOptions, setFilterOptions] = useState<{ sidos: string[]; categories: string[] }>({
-    sidos: [],
-    categories: [],
-  });
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTER_STATE);
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>(null);
+  const [filterOptions, setFilterOptions] = useState<{
+    sidos: string[];
+    categories: string[];
+    vendors: string[];
+  }>({ sidos: [], categories: [], vendors: [] });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +37,14 @@ export default function Home() {
     // not just the initial mount, so results re-fetching reads as "loading" to the user.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetchCampaigns({ search: debouncedSearch, ...filters })
+    fetchCampaigns({
+      search: debouncedSearch,
+      sidos: filters.sidos,
+      categories: filters.categories,
+      vendors: filters.vendors,
+      applyRate: filters.applyRate ?? undefined,
+      sort: filters.sort,
+    })
       .then(setCampaigns)
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -49,7 +52,7 @@ export default function Home() {
 
   function resetFilters() {
     setSearch("");
-    setFilters({ sidos: [], categories: [], sort: "latest" });
+    setFilters(EMPTY_FILTER_STATE);
   }
 
   return (
@@ -69,16 +72,9 @@ export default function Home() {
         ) : campaigns.length === 0 ? (
           <EmptyState onReset={resetFilters} />
         ) : (
-          campaigns.map((campaign, i) => (
-            <div key={campaign.id} className="flex flex-col gap-3">
-              <CampaignCard campaign={campaign} />
-              {(i + 1) % AD_SLOT_INTERVAL === 0 && <AdCard />}
-            </div>
-          ))
+          campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} />)
         )}
       </main>
-
-      <BottomBanner />
 
       <FilterSheet
         open={sheetTab !== null}
@@ -86,6 +82,7 @@ export default function Home() {
         initialTab={sheetTab ?? "region"}
         sidoOptions={filterOptions.sidos}
         categoryOptions={filterOptions.categories}
+        vendorOptions={filterOptions.vendors}
         value={filters}
         onApply={setFilters}
       />

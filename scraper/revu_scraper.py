@@ -30,6 +30,8 @@ from typing import Optional
 
 from playwright.sync_api import sync_playwright
 
+from regions import resolve_region
+
 BASE_URL = "https://www.revu.net"
 CATEGORIES = ["제품", "지역"]
 
@@ -116,17 +118,23 @@ def fetch_campaigns() -> list[dict]:
                     rm = REGION_PREFIX_RE.match(title)
                     if rm:
                         region = rm.group(1)
+                region_sido, region_gugun = resolve_region(region)
 
                 campaigns.append(
                     {
                         "platform": "레뷰",
                         "title": title,
-                        "region_sido": None,
-                        "region_gugun": region,
+                        "region_sido": region_sido,
+                        "region_gugun": region_gugun,
                         "deadline_date": deadline_date,
                         "announce_date": None,
                         "source_url": f"{BASE_URL}/campaign/{cid}",
                         "category": category,
+                        "description": None,
+                        "image_url": None,
+                        "vendor": None,
+                        "recruit_count": None,
+                        "applicant_count": None,
                     }
                 )
 

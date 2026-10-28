@@ -2,8 +2,25 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type Campaign, dDay } from "@/lib/campaigns";
 
+function DdayLabel({ deadlineDate }: { deadlineDate: string | null }) {
+  if (!deadlineDate) {
+    return <span className="text-sm font-semibold text-muted-foreground">상시모집</span>;
+  }
+  const d = dDay(deadlineDate)!;
+  return (
+    <span
+      className={
+        d <= 3
+          ? "text-sm font-semibold text-destructive"
+          : "text-sm font-semibold text-muted-foreground"
+      }
+    >
+      {d <= 0 ? "D-day" : `D-${d}`}
+    </span>
+  );
+}
+
 export function CampaignCard({ campaign }: { campaign: Campaign }) {
-  const d = dDay(campaign.deadline_date);
   const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
 
   return (
@@ -11,59 +28,58 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
       href={campaign.source_url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+      className="flex gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
     >
-      <div className="flex items-center justify-between">
-        <Badge variant="secondary" className="font-normal text-muted-foreground">
-          {campaign.platform}
-        </Badge>
-        {d !== null && (
-          <span
-            className={
-              d <= 3
-                ? "text-sm font-semibold text-destructive"
-                : "text-sm font-semibold text-muted-foreground"
-            }
-          >
-            {d <= 0 ? "D-day" : `D-${d}`}
-          </span>
+      {campaign.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet
+        <img
+          src={campaign.image_url}
+          alt=""
+          className="size-16 shrink-0 rounded-xl object-cover"
+        />
+      ) : (
+        <div className="size-16 shrink-0 rounded-xl bg-muted" />
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <Badge variant="secondary" className="font-normal text-muted-foreground">
+            {campaign.platform}
+          </Badge>
+          <DdayLabel deadlineDate={campaign.deadline_date} />
+        </div>
+        {campaign.vendor && (
+          <p className="line-clamp-1 text-xs font-medium text-foreground/70">{campaign.vendor}</p>
         )}
-      </div>
-      <p className="text-[15px] font-medium leading-snug text-foreground">{campaign.title}</p>
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        {region && <span>{region}</span>}
-        {campaign.deadline_date && (
-          <span>~{campaign.deadline_date.slice(5).replace("-", ".")} 모집</span>
+        <p className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
+          {campaign.title}
+        </p>
+        {campaign.description && (
+          <p className="line-clamp-1 text-xs text-muted-foreground">{campaign.description}</p>
         )}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {region && <span>{region}</span>}
+          {campaign.deadline_date && (
+            <span>~{campaign.deadline_date.slice(5).replace("-", ".")} 모집</span>
+          )}
+        </div>
       </div>
     </a>
   );
 }
 
-export function AdCard() {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-      <div className="h-10 w-10 shrink-0 rounded-lg bg-muted" />
-      <div className="flex-1">
-        <p className="text-[15px] font-medium text-foreground">스폰서 체험단 모집 안내</p>
-        <p className="text-xs text-muted-foreground">카카오 애드핏 · 광고</p>
-      </div>
-      <Badge variant="outline" className="text-muted-foreground">
-        AD
-      </Badge>
-    </div>
-  );
-}
-
 export function CampaignCardSkeleton() {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-5 w-12 rounded-full" />
-        <Skeleton className="h-4 w-8" />
+    <div className="flex gap-3 rounded-2xl border border-border bg-card p-4">
+      <Skeleton className="size-16 shrink-0 rounded-xl" />
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-5 w-12 rounded-full" />
+          <Skeleton className="h-4 w-8" />
+        </div>
+        <Skeleton className="h-5 w-4/5" />
+        <Skeleton className="h-3.5 w-2/5" />
       </div>
-      <Skeleton className="h-5 w-4/5" />
-      <Skeleton className="h-3.5 w-2/5" />
     </div>
   );
 }

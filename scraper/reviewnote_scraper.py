@@ -23,6 +23,18 @@ LIST_URL = "https://www.reviewnote.co.kr/campaigns"
 DETAIL_URL = "https://www.reviewnote.co.kr/campaigns/{id}"
 HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
 
+IMAGE_CDN = "https://img.reviewnote.cloud/cdn-cgi/image/width=640,quality=60,format=auto,fit=scale-down/"
+FIREBASE_IMAGE_URL = (
+    "https://firebasestorage.googleapis.com/v0/b/reviewnote-e92d9.appspot.com/o/{key}?alt=media"
+)
+
+
+def _image_url(image_key: Optional[str]) -> Optional[str]:
+    if not image_key:
+        return None
+    encoded_key = image_key.replace("/", "%2F")
+    return IMAGE_CDN + FIREBASE_IMAGE_URL.format(key=encoded_key)
+
 NEXT_DATA_RE = re.compile(
     r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S
 )
@@ -71,6 +83,11 @@ def fetch_campaigns() -> list[dict]:
                 "announce_date": None,
                 "source_url": DETAIL_URL.format(id=cid),
                 "category": (obj.get("category") or {}).get("title"),
+                "description": offer or None,
+                "image_url": _image_url(obj.get("imageKey")),
+                "vendor": None,
+                "recruit_count": obj.get("infNum"),
+                "applicant_count": obj.get("applicantCount"),
             }
         )
 
