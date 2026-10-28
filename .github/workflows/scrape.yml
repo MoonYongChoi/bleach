@@ -1,0 +1,33 @@
+name: Scrape campaigns
+
+on:
+  schedule:
+    # 하루 4회: 00:30 / 06:30 / 12:30 / 18:30 (UTC) = 09:30 / 15:30 / 21:30 / 03:30 (KST)
+    - cron: "30 0,6,12,18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run scrapers and load into Supabase
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REVU_ID: ${{ secrets.REVU_ID }}
+          REVU_PW: ${{ secrets.REVU_PW }}
+        run: python run_all.py
