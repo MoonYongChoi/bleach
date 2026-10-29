@@ -56,6 +56,8 @@ class Connector:
     # 이 플랫폼 고유의 유형/채널 표기 -> 표준값. 공통 한국어 표기("방문", "배송" 등)는 normalize에 있다.
     type_hints: ClassVar[dict[str, str]] = {}
     channel_hints: ClassVar[dict[str, str]] = {}
+    # 사이트가 채널을 따로 표시하지 않을 때의 기본 채널 (예: 레뷰는 블로그가 기본이고 릴스 등만 표시)
+    default_channels: ClassVar[tuple[str, ...]] = ()
 
     def fetch(self) -> list[RawCampaign]:
         raise NotImplementedError

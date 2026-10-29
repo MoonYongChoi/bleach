@@ -85,6 +85,8 @@ class RevuConnector(Connector):
     required_env = ("REVU_ID", "REVU_PW")
     # /category/{제품,지역} 페이지 이름이 곧 유형이다.
     type_hints = {"제품": "배송", "지역": "방문"}
+    # 레뷰는 블로그 체험단이 기본이고, 릴스/쇼츠/클립 등은 제목 끝 "_릴스"나 카드 아이콘으로만 표시한다.
+    default_channels = ("blog",)
 
     def fetch(self) -> list[RawCampaign]:
         return _fetch()

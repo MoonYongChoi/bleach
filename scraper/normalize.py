@@ -288,6 +288,7 @@ def normalize_campaign(
     platform: Optional[str] = None,
     type_hints: Optional[dict[str, str]] = None,
     channel_hints: Optional[dict[str, str]] = None,
+    default_channels: tuple[str, ...] = (),
 ) -> NormalizeResult:
     """raw: RawCampaign 또는 같은 키를 가진 dict. platform/hints는 보통 normalize_for()가 커넥터에서 채운다."""
     if not isinstance(raw, dict):
@@ -302,6 +303,8 @@ def normalize_campaign(
         return NormalizeResult(None, ["missing_required"])
 
     review_channels, title = normalize_channels(raw.get("channels_raw"), title, channel_hints)
+    if not review_channels and default_channels:
+        review_channels = [c for c in REVIEW_CHANNELS if c in default_channels]
     if not review_channels:
         issues.append("no_channel")
 
@@ -410,6 +413,7 @@ def normalize_for(connector, raw, today: Optional[date] = None) -> NormalizeResu
         platform=connector.label,
         type_hints=connector.type_hints,
         channel_hints=connector.channel_hints,
+        default_channels=connector.default_channels,
     )
 
 

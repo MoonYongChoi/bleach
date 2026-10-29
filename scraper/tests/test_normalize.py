@@ -204,6 +204,10 @@ class ChannelAndTypeTest(unittest.TestCase):
         r = norm({**PavlovuTest.RAW, "channels_raw": ["인스타", "블로그", "모름"]}).record
         self.assertEqual(r["review_channels"], ["blog", "instagram"])  # 표시 순서로 정렬, 모르는 값 무시
 
+    def test_revu_defaults_to_blog(self):
+        r = norm({"platform": "레뷰", "title": "보온텀블러", "source_url": "u", "type_hint": "제품"}).record
+        self.assertEqual(r["review_channels"], ["blog"])
+
     def test_no_channel_flagged(self):
         res = norm(ReviewnoteTest.RAW)
         self.assertEqual(res.record["review_channels"], [])
