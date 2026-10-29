@@ -10,14 +10,21 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from normalize import normalize_all, normalize_campaign  # noqa: E402
+from connectors import BY_LABEL, REGISTRY  # noqa: E402
+from connectors.base import RawCampaign  # noqa: E402
+from normalize import normalize_all, normalize_campaign, normalize_for  # noqa: E402
 from regions import resolve_region  # noqa: E402
 
 TODAY = date(2026, 10, 28)
 
 
 def norm(raw):
-    return normalize_campaign(raw, today=TODAY)
+    """실제 파이프라인과 같이 platform에 맞는 커넥터의 힌트를 붙여서 정제."""
+    connector = BY_LABEL.get(raw.get("platform"))
+    if connector is None:
+        return normalize_campaign(raw, today=TODAY)
+    fields = {k: v for k, v in raw.items() if k != "platform"}
+    return normalize_for(connector, RawCampaign(**fields), today=TODAY)
 
 
 class RevuTest(unittest.TestCase):
@@ -184,6 +191,60 @@ class PavlovuTest(unittest.TestCase):
         self.assertEqual(r["category"], "뷰티")
 
 
+class ChannelAndTypeTest(unittest.TestCase):
+    def test_title_suffix_becomes_channel(self):
+        # 실제 DB: 레뷰 "오리주물럭_릴스"
+        r = norm({"platform": "레뷰", "title": "오리주물럭_릴스", "source_url": "u", "type_hint": "제품"}).record
+        self.assertEqual(r["title"], "오리주물럭")
+        self.assertEqual(r["review_channels"], ["reels"])
+
+    def test_platform_channel_codes(self):
+        r = norm({**ReviewnoteTest.RAW, "channels_raw": ["BLOG"]}).record
+        self.assertEqual(r["review_channels"], ["blog"])
+        r = norm({**PavlovuTest.RAW, "channels_raw": ["인스타", "블로그", "모름"]}).record
+        self.assertEqual(r["review_channels"], ["blog", "instagram"])  # 표시 순서로 정렬, 모르는 값 무시
+
+    def test_no_channel_flagged(self):
+        res = norm(ReviewnoteTest.RAW)
+        self.assertEqual(res.record["review_channels"], [])
+        self.assertIn("no_channel", res.issues)
+
+    def test_payback_is_purchase_type(self):
+        r = norm({**ReviewnoteTest.RAW, "type_hint": "DELIVERY", "is_payback": True}).record
+        self.assertEqual(r["campaign_type"], "구매")
+        self.assertIsNone(r["region_sido"])
+
+    def test_platform_hints_do_not_leak(self):
+        # 리뷰노트 고유 코드 "VISIT"은 다른 플랫폼에서는 의미가 없다
+        r = norm({"platform": "파블로", "title": "t", "source_url": "u", "type_hint": "VISIT"}).record
+        self.assertEqual(r["campaign_type"], "기타")
+
+
+class ConnectorTest(unittest.TestCase):
+    def test_registry_contract(self):
+        keys = [c.key for c in REGISTRY]
+        self.assertEqual(len(keys), len(set(keys)))
+        for c in REGISTRY:
+            self.assertTrue(c.key and c.label and c.base_url, c)
+            self.assertTrue(callable(c.fetch))
+            for value in c.type_hints.values():
+                self.assertIn(value, ("방문", "배송", "구매", "기자단", "재택", "기타"))
+
+    def test_from_db_row_is_idempotent(self):
+        # 이미 정제된 행을 다시 backfill해도 값이 바뀌지 않아야 한다
+        for raw in (ReviewnoteTest.RAW, PavlovuTest.RAW, RevuTest().product()):
+            connector = BY_LABEL[raw["platform"]]
+            first = norm(raw).record
+            again = normalize_for(connector, connector.from_db_row(first), today=TODAY).record
+            for key in ("title", "region_sido", "region_gugun", "category", "campaign_type", "review_channels"):
+                self.assertEqual(first[key], again[key], (raw["platform"], key))
+
+    def test_reviewnote_legacy_title_restored(self):
+        c = BY_LABEL["리뷰노트"]
+        raw = c.from_db_row({"source_url": "u", "title": "베이글모닝 - 키링 1개", "description": "키링 1개"})
+        self.assertEqual(raw.title, "베이글모닝")
+
+
 class GenericTest(unittest.TestCase):
     def test_missing_required_dropped(self):
         records, report = normalize_all([{"platform": "파블로", "title": " ", "source_url": "x"}], today=TODAY)
@@ -224,7 +285,7 @@ class GenericTest(unittest.TestCase):
         self.assertEqual(resolve_region("충남/세종")[0], "충남")
         self.assertEqual(resolve_region("구매"), (None, None))
         r = norm({"platform": "파블로", "title": "t", "source_url": "u", "region_raw": "구매"}).record
-        self.assertEqual(r["campaign_type"], "배송")
+        self.assertEqual(r["campaign_type"], "구매")
 
     def test_regions(self):
         self.assertEqual(resolve_region("중구"), (None, "중구"))  # 여러 시/도에 있음 → 모호

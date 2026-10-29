@@ -1,4 +1,4 @@
-"""파블로(Pavlovu) 체험단 스크래퍼.
+"""파블로(Pavlovu) 커넥터.
 
 구조 메모 (2026-10-07 조사):
 - 목록: https://pavlovu.com/review_campaign_list.php?page=N  (서버 렌더링, requests만으로 충분)
@@ -9,6 +9,10 @@
     <span class="pvc_pl"><i>채널</i><span class="pvc_pn">지역 · 카테고리</span>...</span>
   </a>
 - 정확한 마감일(날짜)은 상세페이지에서 "신청기간 MM.DD(요일) ~ MM.DD(요일)" 텍스트로 파싱.
+  (2026-10-29: DB상 파블로 마감일 채움률이 4%라, 태그 사이에 끼인 텍스트·요일 생략·연도 포함
+  표기도 받도록 정규식을 넓히고 실패 시 목록의 D-N으로 대체한다 — 실제 페이지로 재확인 필요)
+- <strong>에는 업체명이 아니라 제공내역("5만원 이용권")이 들어 있고 업체명은 .pvc_store에 있다.
+  기자단 카드는 업체명이 비어 있고 <strong>이 보상("5,000포인트")뿐이다.
 """
 
 from __future__ import annotations
@@ -21,11 +25,19 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
+from connectors.base import Connector, RawCampaign
 from normalize import today_kst
 
 BASE_URL = "https://pavlovu.com"
 LIST_URL = f"{BASE_URL}/review_campaign_list.php"
 HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
+
+
+# "신청기간 10.28(화) ~ 11.03(월)", "신청기간 : 2026.10.28 ~ 2026.11.03", "신청기간 10.28 ~ 11.03"
+APPLY_PERIOD_RE = re.compile(
+    r"신청\s*기간\s*[:：]?\s*(?:\d{4}[.\-/])?(\d{1,2})[.\-/](\d{1,2})\.?(?:\s*\([^)]*\))?"
+    r"\s*[~\-]\s*(?:\d{4}[.\-/])?(\d{1,2})[.\-/](\d{1,2})"
+)
 
 
 class _Detail:
@@ -54,7 +66,9 @@ def _parse_detail(cp_id: str) -> _Detail:
     except requests.RequestException:
         return detail
 
-    m = re.search(r"신청기간\s*(\d{1,2})\.(\d{1,2})\([^)]+\)\s*~\s*(\d{1,2})\.(\d{1,2})\(", resp.text)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    page_text = soup.get_text(" ", strip=True)
+    m = APPLY_PERIOD_RE.search(page_text)
     if m:
         end_month, end_day = int(m.group(3)), int(m.group(4))
         today = today_kst()
@@ -67,7 +81,6 @@ def _parse_detail(cp_id: str) -> _Detail:
         except ValueError:
             detail.deadline_date = None
 
-    soup = BeautifulSoup(resp.text, "html.parser")
     lines = soup.get_text("\n", strip=True).split("\n")
     for i, line in enumerate(lines):
         if line == "제공내역" and i + 1 < len(lines):
@@ -88,9 +101,25 @@ def _parse_detail(cp_id: str) -> _Detail:
     return detail
 
 
-def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> list[dict]:
-    """마감임박순 목록을 긁어서 표준 스키마 dict 리스트로 반환."""
-    campaigns: list[dict] = []
+class PavlovuConnector(Connector):
+    key = "pavlovu"
+    label = "파블로"
+    base_url = BASE_URL
+    # 목록 카드의 "지역 · 카테고리" 칸에 지역 대신 유형이 들어오는 경우
+    type_hints = {"구매": "구매", "방문자": "방문", "출장": "방문"}
+    channel_hints = {"블": "blog", "인": "instagram", "유": "youtube"}  # 아이콘 약어로 오는 경우 대비
+
+    def __init__(self, max_pages: int = 5, with_exact_deadline: bool = True):
+        self.max_pages = max_pages
+        self.with_exact_deadline = with_exact_deadline
+
+    def fetch(self) -> list[RawCampaign]:
+        return _fetch(self.max_pages, self.with_exact_deadline)
+
+
+def _fetch(max_pages: int, with_exact_deadline: bool) -> list[RawCampaign]:
+    """마감임박순 목록을 긁어서 RawCampaign 리스트로 반환."""
+    campaigns: list[RawCampaign] = []
 
     for page in range(1, max_pages + 1):
         resp = requests.get(LIST_URL, params={"page": page}, headers=HEADERS, timeout=15)
@@ -128,6 +157,9 @@ def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> lis
                 elif "day" in dday_text.lower() or "오늘" in dday_text:
                     days_left = 0
 
+            # 리뷰 채널: <span class="pvc_pl"><i>블로그</i>... (여러 개일 수 있음)
+            channels = [i.get_text(strip=True) for i in link.select(".pvc_pl i") if i.get_text(strip=True)]
+
             region_cat = link.select_one(".pvc_pn")
             region_raw, category = None, None
             if region_cat:
@@ -145,28 +177,27 @@ def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> lis
             detail = _parse_detail(cp_id) if with_exact_deadline else _Detail()
 
             campaigns.append(
-                {
-                    "platform": "파블로",
-                    "title": title,
-                    "region_raw": region_raw,
-                    "deadline_date": detail.deadline_date,
-                    "deadline_days_left": days_left,
-                    "announce_date": None,
-                    "source_url": source_url,
-                    "category_raw": category,
-                    "description": detail.description,
-                    "image_url": image_url,
-                    "vendor": vendor,
-                    "recruit_count": detail.recruit_count,
-                    "applicant_count": detail.applicant_count,
-                }
+                RawCampaign(
+                    source_url=source_url,
+                    title=title,
+                    description=detail.description,
+                    vendor=vendor,
+                    image_url=image_url,
+                    region_raw=region_raw,
+                    deadline_date=detail.deadline_date,
+                    deadline_days_left=days_left,
+                    recruit_count=detail.recruit_count,
+                    applicant_count=detail.applicant_count,
+                    category_raw=category,
+                    channels_raw=channels,
+                )
             )
 
     return campaigns
 
 
 if __name__ == "__main__":
-    items = fetch_campaigns(max_pages=1)
+    items = PavlovuConnector(max_pages=1).fetch()
     print(f"수집된 캠페인: {len(items)}개")
     for c in items[:5]:
         print(c)

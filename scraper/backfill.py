@@ -12,53 +12,13 @@ import argparse
 import os
 from collections import Counter
 
-from normalize import normalize_campaign
+from connectors import BY_LABEL
+from normalize import normalize_for
 
 UPDATED_COLUMNS = (
     "title", "region_sido", "region_gugun", "category", "category_raw", "campaign_type",
-    "description", "image_url", "recruit_count", "applicant_count", "is_active",
+    "review_channels", "description", "image_url", "recruit_count", "applicant_count", "is_active",
 )
-
-# 정제 전 스키마에서 category 칸에 들어가던 레뷰 페이지 이름
-_REVU_PAGES = {"제품", "지역"}
-
-
-def row_to_raw(row: dict) -> dict:
-    """DB 행 -> 스크래퍼가 넘겼을 법한 원본 dict (normalize 입력 형태)."""
-    platform = row["platform"]
-    category_raw = row.get("category_raw") or row.get("category")
-    raw = {
-        "platform": platform,
-        "title": row["title"],
-        "deadline_date": row.get("deadline_date"),
-        "source_url": row["source_url"],
-        "description": row.get("description"),
-        "image_url": row.get("image_url"),
-        "vendor": row.get("vendor"),
-        "recruit_count": row.get("recruit_count"),
-        "applicant_count": row.get("applicant_count"),
-        "category_raw": category_raw,
-    }
-
-    if platform == "리뷰노트":
-        # 예전 스크래퍼는 제목 뒤에 " - 제공내역"을 붙여 저장했다.
-        desc = row.get("description")
-        if desc and raw["title"].endswith(f" - {desc}") and len(raw["title"]) > len(desc) + 3:
-            raw["title"] = raw["title"][: -(len(desc) + 3)]
-        raw["region_sido"] = row.get("region_sido")
-        raw["region_gugun"] = row.get("region_gugun")
-    elif platform == "레뷰":
-        if category_raw in _REVU_PAGES:
-            raw["type_hint"] = category_raw
-            raw["category_raw"] = None
-        raw["region_raw"] = row.get("region_gugun") or row.get("region_sido")
-    else:
-        # 파블로: 예전 resolve_region 결과(gugun=원본 텍스트)로 원본 지역을 복원해 다시 해석
-        raw["region_raw"] = row.get("region_gugun") or row.get("region_sido")
-
-    if row.get("campaign_type") and "type_hint" not in raw:
-        raw["type_hint"] = row["campaign_type"]
-    return raw
 
 
 def plan(rows: list[dict]) -> tuple[list[dict], Counter]:
@@ -66,7 +26,11 @@ def plan(rows: list[dict]) -> tuple[list[dict], Counter]:
     changes: list[dict] = []
     changed_cols: Counter = Counter()
     for row in rows:
-        record = normalize_campaign(row_to_raw(row)).record
+        connector = BY_LABEL.get(row["platform"])
+        if connector is None:
+            continue  # 등록되지 않은 플랫폼(테스트 행 등)은 건드리지 않음
+        # 플랫폼별로 예전 스키마 흔적을 되돌리는 건 각 커넥터의 from_db_row 몫
+        record = normalize_for(connector, connector.from_db_row(row)).record
         if record is None:
             continue
         diff = {c: record[c] for c in UPDATED_COLUMNS if record[c] != row.get(c)}
@@ -80,6 +44,7 @@ UPDATE_SQL = """
 update public.campaigns set
     title = %(title)s, region_sido = %(region_sido)s, region_gugun = %(region_gugun)s,
     category = %(category)s, category_raw = %(category_raw)s, campaign_type = %(campaign_type)s,
+    review_channels = %(review_channels)s,
     description = %(description)s, image_url = %(image_url)s, recruit_count = %(recruit_count)s,
     applicant_count = %(applicant_count)s, is_active = %(is_active)s
 where id = %(id)s

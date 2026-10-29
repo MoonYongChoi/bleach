@@ -25,8 +25,11 @@ create table if not exists public.campaigns (
   category text,
   -- 플랫폼 원본 분류 텍스트 (디버깅/재분류용)
   category_raw text,
-  -- 캠페인 유형: 방문 / 배송 / 기자단 / 기타 (배송형은 지역 없음)
+  -- 캠페인 유형: 방문(체험형) / 배송(제품 제공형) / 구매(구매 후 환급형) / 기자단 / 재택 / 기타
+  -- 배송·구매·재택형은 지역 없음
   campaign_type text,
+  -- 리뷰 채널 코드 배열: blog / instagram / reels / youtube / shorts / tiktok / clip
+  review_channels text[] not null default '{}',
 
   -- 6. 제공내역(체험단 상세 혜택 설명) / 목록 썸네일
   description text,
@@ -48,6 +51,7 @@ create index if not exists campaigns_region_idx on public.campaigns (region_sido
 create index if not exists campaigns_category_idx on public.campaigns (category);
 create index if not exists campaigns_platform_idx on public.campaigns (platform);
 create index if not exists campaigns_type_idx on public.campaigns (campaign_type);
+create index if not exists campaigns_channels_idx on public.campaigns using gin (review_channels);
 
 -- RLS: 프론트(anon key)는 읽기만, 쓰기는 service_role(크롤러)만
 alter table public.campaigns enable row level security;

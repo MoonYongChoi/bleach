@@ -45,6 +45,11 @@
   - [x] `supabase/migrations/20261029_normalize_fields.sql` 실행 (category_raw, campaign_type 컬럼) + `backfill.py`로 기존 행 재정제
   - [ ] 파블로 기자단 카드 제목 셀렉터 수정 (현재 제목 자리에 "5,000포인트" 같은 보상이 잡힘 → 비활성 처리 중)
   - [ ] 파블로 상세페이지 마감일 파싱 점검 (기존 행 마감일 채움률 3.9%)
+- [x] 커넥터 구조 (`scraper/connectors/`) — 새 플랫폼은 Connector 파일 1개 + `connectors/__init__.py` 등록 1줄
+- [x] 캠페인 유형(방문/배송/구매/기자단/재택) + 리뷰 채널(`review_channels`: 블로그/인스타/릴스/유튜브/쇼츠/틱톡/클립) 수집·정제
+  - [ ] 실제 페이지로 채널 셀렉터 확인 (파블로 `.pvc_pl i`, 레뷰 카드 아이콘 alt, 리뷰노트 `channel` 값 종류)
+- [ ] `platforms` 테이블 + `campaigns.platform`을 키(revu 등)로 전환, 프론트 PLATFORMS 상수 제거
+- [ ] `scrape_runs` 수집 기록 테이블 + Actions를 커넥터별 matrix로 분리
 - [ ] 크롤링 실패/차단 대응 로직(재시도, 로그) 보강 — 현재는 플랫폼별 try/except로 한 곳 실패해도 나머지는 계속 진행하는 수준
 
 ### Day 4~5: 모바일 UI 컴포넌트 제작

@@ -1,13 +1,9 @@
-"""플랫폼별 스크래퍼 결과를 BLEACH 표준 레코드로 정제한다.
+"""커넥터(connectors/)가 넘긴 RawCampaign을 BLEACH 표준 레코드로 정제한다.
 
-스크래퍼(revu/pavlovu/reviewnote)는 사이트에서 읽은 값을 거의 그대로 넘기고, 여기서
-제목/마감일/모집·신청인원/이미지/분류/지역을 한 가지 규칙으로 맞춘다. 그래서 플랫폼이
-늘어나도 "BLEACH에 들어가는 데이터가 어떤 모양인지"는 이 파일 하나만 보면 된다.
-
-스크래퍼가 표준 필드 외에 넘길 수 있는 힌트 키 (DB에는 저장되지 않음):
-- region_raw: 원본 지역 텍스트 — region_sido/region_gugun이 비어 있으면 이걸로 해석한다.
-- type_hint: 원본 유형 텍스트 (예: 리뷰노트 sort "VISIT", 레뷰 페이지 "지역") — campaign_type 판정용.
-- deadline_days_left: 정확한 날짜가 없을 때 쓰는 "D-N"의 N.
+커넥터는 사이트에서 읽은 값을 거의 그대로 넘기고, 여기서 제목/마감일/모집·신청인원/이미지/
+분류/지역/유형/리뷰 채널을 한 가지 규칙으로 맞춘다. 이 파일에는 특정 플랫폼 이름이 나오지 않는다 —
+플랫폼 고유 표기(예: 리뷰노트 sort "VISIT")는 각 커넥터의 type_hints / channel_hints로 넘어온다.
+입력 필드 의미는 connectors/base.py 의 RawCampaign 참고.
 """
 
 from __future__ import annotations
@@ -95,17 +91,33 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-CAMPAIGN_TYPES = ("방문", "배송", "기자단", "재택", "기타")
-TYPE_HINTS = {
-    # 리뷰노트 sort
-    "VISIT": "방문", "DELIVERY": "배송", "PURCHASE": "배송", "REPORTER": "기자단", "PRESS": "기자단",
-    # 레뷰 카테고리 페이지 / 파블로 카테고리·지역 칸
-    "지역": "방문", "방문": "방문", "출장": "방문",
-    "제품": "배송", "배송": "배송", "구매평": "배송", "구매": "배송",
-    "방문자": "방문",
+# 방문: 매장 방문 체험형 / 배송: 제품 제공형 / 구매: 직접 구매 후 환급(페이백)형
+# 기자단: 원고만 작성(체험 없음) / 재택: 앱·서비스 등 집에서 하는 체험
+CAMPAIGN_TYPES = ("방문", "배송", "구매", "기자단", "재택", "기타")
+# 플랫폼과 무관한 한국어 표기. 플랫폼 고유 표기는 Connector.type_hints에서 합쳐진다.
+COMMON_TYPE_HINTS = {
+    "방문": "방문", "방문형": "방문", "체험": "방문",
+    "배송": "배송", "배송형": "배송", "제품": "배송", "구매평": "배송",
+    "구매": "구매", "페이백": "구매", "구매형": "구매",
     "기자단": "기자단",
-    "재택": "재택",  # 리뷰노트는 재택 캠페인의 city/sido 칸에 "재택"을 넣어 보낸다
+    "재택": "재택",
 }
+
+# 리뷰 채널 표준 코드 (화면 표시 순서). src/lib/campaigns.ts 의 REVIEW_CHANNELS와 맞출 것.
+REVIEW_CHANNELS = ("blog", "instagram", "reels", "youtube", "shorts", "tiktok", "clip")
+COMMON_CHANNEL_HINTS = {
+    "blog": "blog", "블로그": "blog", "네이버블로그": "blog", "네이버 블로그": "blog", "naver blog": "blog",
+    "instagram": "instagram", "인스타": "instagram", "인스타그램": "instagram", "insta": "instagram", "피드": "instagram",
+    "reels": "reels", "릴스": "reels", "인스타 릴스": "reels",
+    "youtube": "youtube", "유튜브": "youtube",
+    "shorts": "shorts", "쇼츠": "shorts", "숏츠": "shorts", "유튜브 쇼츠": "shorts",
+    "tiktok": "tiktok", "틱톡": "tiktok",
+    "clip": "clip", "클립": "clip", "네이버클립": "clip", "네이버 클립": "clip",
+}
+# 제목 끝에 붙는 채널 표기: "오리주물럭_릴스", "치킨 (인스타)", "샐러드 [유튜브]"
+_TITLE_CHANNEL_SUFFIX_RE = re.compile(
+    r"\s*(?:[_/]|[\[(])\s*(블로그|인스타그램|인스타|릴스|유튜브|쇼츠|숏츠|틱톡|클립)\s*[\])]?\s*$"
+)
 
 _PLACEHOLDER_IMAGE_RE = re.compile(r"(blank|noimage|no_image|placeholder|spacer|default)\.(gif|png|jpe?g|svg)", re.I)
 _WS_RE = re.compile(r"\s+")
@@ -198,14 +210,41 @@ def to_date(value) -> Optional[date]:
     return None
 
 
-def infer_campaign_type(raw: dict) -> str:
+def infer_campaign_type(raw: dict, type_hints: Optional[dict[str, str]] = None) -> str:
+    hints = {**COMMON_TYPE_HINTS, **(type_hints or {})}
+    found = None
     for key in ("type_hint", "category_raw", "category", "region_raw", "region_sido", "region_gugun"):
         hint = raw.get(key)
-        if isinstance(hint, str) and hint.strip() in TYPE_HINTS:
-            return TYPE_HINTS[hint.strip()]
+        if isinstance(hint, str) and hint.strip() in hints:
+            found = hints[hint.strip()]
+            break
+    if raw.get("is_payback") and found in (None, "배송", "기타"):
+        return "구매"
+    if found:
+        return found
     if (raw.get("region_sido") and not is_non_geo(raw["region_sido"])) or raw.get("region_raw"):
         return "방문"
     return "기타"
+
+
+def normalize_channels(
+    raw_values, title: str, channel_hints: Optional[dict[str, str]] = None
+) -> tuple[list[str], str]:
+    """(표준 채널 코드 목록, 채널 표기를 뗀 제목)."""
+    hints = {**COMMON_CHANNEL_HINTS, **(channel_hints or {})}
+    found: set[str] = set()
+    for value in raw_values or []:
+        text = clean_text(value)
+        if not text:
+            continue
+        code = hints.get(text) or hints.get(text.lower()) or hints.get(text.upper())
+        if code:
+            found.add(code)
+    m = _TITLE_CHANNEL_SUFFIX_RE.search(title)
+    if m and title[: m.start()].strip():
+        found.add(COMMON_CHANNEL_HINTS[m.group(1)])
+        title = title[: m.start()].strip()
+    return [c for c in REVIEW_CHANNELS if c in found], title
 
 
 def _keyword_category(text: str) -> Optional[str]:
@@ -242,15 +281,29 @@ def normalize_category(raw_category: Optional[str], title: str, description: Opt
     return category
 
 
-def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResult:
+def normalize_campaign(
+    raw,
+    today: Optional[date] = None,
+    *,
+    platform: Optional[str] = None,
+    type_hints: Optional[dict[str, str]] = None,
+    channel_hints: Optional[dict[str, str]] = None,
+) -> NormalizeResult:
+    """raw: RawCampaign 또는 같은 키를 가진 dict. platform/hints는 보통 normalize_for()가 커넥터에서 채운다."""
+    if not isinstance(raw, dict):
+        raw = raw.to_dict()
     today = today or today_kst()
     issues: list[str] = []
 
     source_url = clean_text(raw.get("source_url"))
     title = clean_title(raw.get("title"))
-    platform = clean_text(raw.get("platform"))
+    platform = clean_text(platform or raw.get("platform"))
     if not source_url or not title or not platform:
         return NormalizeResult(None, ["missing_required"])
+
+    review_channels, title = normalize_channels(raw.get("channels_raw"), title, channel_hints)
+    if not review_channels:
+        issues.append("no_channel")
 
     description = clean_text(raw.get("description"))
     if description == title or description in _JUNK_DESCRIPTIONS:
@@ -292,7 +345,7 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
         issues.append("no_image")
 
     # 유형 / 지역
-    campaign_type = infer_campaign_type(raw)
+    campaign_type = infer_campaign_type(raw, type_hints)
     raw_sido = None if is_non_geo(raw.get("region_sido")) else raw.get("region_sido")
     region_sido = normalize_sido(raw_sido)
     region_gugun = clean_text(raw.get("region_gugun"))
@@ -307,7 +360,7 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
         region_sido, region_gugun = resolve_region(region_gugun)
     if is_non_geo(region_gugun):
         region_gugun = None
-    if campaign_type in ("배송", "재택"):
+    if campaign_type in ("배송", "구매", "재택"):
         region_sido = region_gugun = None  # 전국 대상 — 지역 필터에 섞이지 않게
     elif campaign_type == "방문" and not region_sido:
         issues.append("region_unresolved")
@@ -329,6 +382,7 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
         "category": category,
         "category_raw": category_raw,
         "campaign_type": campaign_type,
+        "review_channels": review_channels,
         "description": description,
         "image_url": image_url,
         "vendor": vendor,
@@ -339,13 +393,32 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
     return NormalizeResult(record, issues)
 
 
-def normalize_all(raws: list[dict], today: Optional[date] = None) -> tuple[list[dict], list[tuple[dict, list[str]]]]:
-    """(적재할 레코드, [(레코드 또는 원본, issues)]) — source_url 중복은 뒤에 온 값으로 덮는다."""
+def normalize_for(connector, raw, today: Optional[date] = None) -> NormalizeResult:
+    """커넥터의 표시 이름/고유 힌트를 붙여서 정제."""
+    return normalize_campaign(
+        raw,
+        today,
+        platform=connector.label,
+        type_hints=connector.type_hints,
+        channel_hints=connector.channel_hints,
+    )
+
+
+def normalize_all(raws: list, today: Optional[date] = None) -> tuple[list[dict], list[tuple[dict, list[str]]]]:
+    """(적재할 레코드, [(레코드 또는 원본, issues)]) — source_url 중복은 뒤에 온 값으로 덮는다.
+
+    raws 원소는 RawCampaign/dict 이거나, 커넥터를 같이 넘기는 (connector, raw) 튜플.
+    """
     by_url: dict[str, dict] = {}
     report: list[tuple[dict, list[str]]] = []
-    for raw in raws:
-        result = normalize_campaign(raw, today)
-        report.append((result.record or raw, result.issues))
+    for item in raws:
+        if isinstance(item, tuple):
+            connector, raw = item
+            result = normalize_for(connector, raw, today)
+        else:
+            raw = item
+            result = normalize_campaign(raw, today)
+        report.append((result.record or (raw if isinstance(raw, dict) else raw.to_dict()), result.issues))
         if result.record:
             by_url[result.record["source_url"]] = result.record
     return list(by_url.values()), report

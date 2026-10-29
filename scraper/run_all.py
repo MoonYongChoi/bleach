@@ -1,45 +1,49 @@
-"""레뷰/파블로/리뷰노트를 모두 긁어서 정제 후 Supabase에 적재. GitHub Actions에서 호출.
+"""등록된 커넥터(connectors.REGISTRY)를 모두 돌려 정제 후 Supabase에 적재. GitHub Actions에서 호출.
 
-    python run_all.py            # 수집 → 정제 → 적재
-    python run_all.py --dry-run  # 수집 → 정제 → 품질 리포트만 출력 (DB 안 건드림)
+    python run_all.py                    # 수집 → 정제 → 적재
+    python run_all.py --dry-run          # 수집 → 정제 → 품질 리포트만 출력 (DB 안 건드림)
+    python run_all.py --only revu,pavlovu  # 일부 커넥터만
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 
+from connectors import BY_KEY, REGISTRY, Connector
 from normalize import normalize_all
-from pavlovu_scraper import fetch_campaigns as fetch_pavlovu
 from quality import print_report
-from reviewnote_scraper import fetch_campaigns as fetch_reviewnote
 
 
-def fetch_revu() -> list[dict]:
-    # Playwright는 레뷰에만 필요하니, 설치 안 된 환경에서도 나머지는 돌 수 있게 지연 import
-    from revu_scraper import fetch_campaigns
-
-    return fetch_campaigns()
-
-
-def run(scraper_name: str, fetch_fn) -> list[dict]:
+def run(connector: Connector) -> list:
+    missing = [name for name in connector.required_env if not os.environ.get(name)]
+    if missing:
+        print(f"[{connector.label}] 건너뜀: 환경변수 {', '.join(missing)} 없음")
+        return []
     try:
-        items = fetch_fn()
-        print(f"[{scraper_name}] 수집 {len(items)}건")
-        return items
+        items = connector.fetch()
+        print(f"[{connector.label}] 수집 {len(items)}건")
+        return [(connector, item) for item in items]
     except Exception as e:  # noqa: BLE001 - 한 플랫폼 실패가 전체를 막으면 안 됨
-        print(f"[{scraper_name}] 실패: {e}")
+        print(f"[{connector.label}] 실패: {e}")
         return []
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="DB에 쓰지 않고 정제 결과 리포트만 출력")
+    parser.add_argument("--only", help=f"쉼표로 구분한 커넥터 키 ({', '.join(BY_KEY)})")
     args = parser.parse_args()
 
-    raw_campaigns: list[dict] = []
-    raw_campaigns += run("파블로", lambda: fetch_pavlovu(max_pages=5))
-    raw_campaigns += run("리뷰노트", fetch_reviewnote)
-    raw_campaigns += run("레뷰", fetch_revu)
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
+
+    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
+
+    raw_campaigns: list = []
+    for connector in connectors:
+        raw_campaigns += run(connector)
 
     records, report = normalize_all(raw_campaigns)
     print_report(report)

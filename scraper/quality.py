@@ -19,6 +19,7 @@ FIELDS = [
     ("이미지", "image_url"),
     ("분류", "category"),
     ("지역", "region_sido"),
+    ("채널", "review_channels"),
 ]
 
 ISSUE_LABELS = {
@@ -32,6 +33,7 @@ ISSUE_LABELS = {
     "no_image": "이미지 없음/무효",
     "region_unresolved": "방문형인데 시/도 해석 실패",
     "category_unresolved": "분류 추론 실패",
+    "no_channel": "리뷰 채널 정보 없음",
 }
 
 
@@ -53,7 +55,7 @@ def _print_coverage(rows_by_platform: dict[str, list[dict]]) -> None:
                 filled = sum(1 for r in visit if r.get(key))
                 cells.append(_pct(filled, len(visit)))
             else:
-                filled = sum(1 for r in rows if r.get(key) not in (None, ""))
+                filled = sum(1 for r in rows if r.get(key) not in (None, "", []))
                 cells.append(_pct(filled, total))
         print(f"{platform:<8}{total:>6}" + "".join(f"{c:>10}" for c in cells))
     print("(지역 = 방문형 중 시/도가 채워진 비율)")
@@ -71,6 +73,8 @@ def print_report(report: list[tuple[dict, list[str]]], examples: int = 3) -> Non
         rows_by_platform[platform].append(record)
         breakdown["분류"][(platform, record.get("category") or "(없음)")] += 1
         breakdown["유형"][(platform, record.get("campaign_type") or "(없음)")] += 1
+        for channel in record.get("review_channels") or ["(없음)"]:
+            breakdown["채널"][(platform, channel)] += 1
         for issue in issues:
             issues_by_platform[platform][issue] += 1
             key = (platform, issue)

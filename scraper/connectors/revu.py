@@ -1,4 +1,4 @@
-"""레뷰(Revu) 체험단 스크래퍼.
+"""레뷰(Revu) 커넥터.
 
 레뷰는 AngularJS SPA라 서버 렌더링 HTML에 데이터가 없고, 카테고리 전체 목록은
 로그인한 사용자에게만 열린다 (비로그인 시 /login으로 리다이렉트됨).
@@ -30,8 +30,7 @@ from datetime import date, timedelta
 from typing import Optional
 from urllib.parse import urljoin
 
-from playwright.sync_api import sync_playwright
-
+from connectors.base import Connector, RawCampaign
 from normalize import today_kst
 
 BASE_URL = "https://www.revu.net"
@@ -78,8 +77,32 @@ def _parse_deadline(status_text: str) -> Optional[date]:
     return None
 
 
-def fetch_campaigns() -> list[dict]:
-    campaigns: list[dict] = []
+class RevuConnector(Connector):
+    key = "revu"
+    label = "레뷰"
+    base_url = BASE_URL
+    needs_browser = True
+    required_env = ("REVU_ID", "REVU_PW")
+    # /category/{제품,지역} 페이지 이름이 곧 유형이다.
+    type_hints = {"제품": "배송", "지역": "방문"}
+
+    def fetch(self) -> list[RawCampaign]:
+        return _fetch()
+
+    def from_db_row(self, row: dict) -> RawCampaign:
+        raw = super().from_db_row(row)
+        # 정제 전 스키마는 category 칸에 페이지 이름("제품"/"지역")을 넣었다.
+        if raw.category_raw in self.type_hints:
+            raw.type_hint = raw.category_raw
+            raw.category_raw = None
+        return raw
+
+
+def _fetch() -> list[RawCampaign]:
+    # Playwright는 레뷰에만 필요하니, 설치 안 된 환경에서도 레지스트리 import가 되도록 지연 import
+    from playwright.sync_api import sync_playwright
+
+    campaigns: list[RawCampaign] = []
     seen_ids: set[str] = set()
 
     with sync_playwright() as p:
@@ -94,6 +117,10 @@ def fetch_campaigns() -> list[dict]:
         for category in CATEGORIES:
             page.goto(f"{BASE_URL}/category/{category}", wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(1500)
+            # 썸네일이 lazy-load라 화면 밖 카드는 src가 비어 있다 (DB상 이미지 채움률 50%) — 끝까지 스크롤
+            for _ in range(10):
+                page.mouse.wheel(0, 4000)
+                page.wait_for_timeout(300)
 
             cards = page.eval_on_selector_all(
                 'a[href^="/campaign/"]',
@@ -144,22 +171,22 @@ def fetch_campaigns() -> list[dict]:
                 image_url = urljoin(BASE_URL, card["image"]) if card["image"] else None
 
                 campaigns.append(
-                    {
-                        "platform": "레뷰",
-                        "title": title,
-                        "region_raw": region_raw,
-                        "deadline_date": deadline_date,
-                        "announce_date": None,
-                        "source_url": f"{BASE_URL}/campaign/{cid}",
+                    RawCampaign(
+                        source_url=f"{BASE_URL}/campaign/{cid}",
+                        title=title,
+                        description=card["desc"],
+                        vendor=vendor,
+                        image_url=image_url,
+                        region_raw=region_raw,
+                        deadline_date=deadline_date,
+                        recruit_count=recruit_count,
+                        applicant_count=applicant_count,
                         # "제품"/"지역"은 페이지 이름일 뿐이라 분류는 normalize가 제목으로 추론한다.
-                        "category_raw": None,
-                        "type_hint": category,
-                        "description": card["desc"],
-                        "image_url": image_url,
-                        "vendor": vendor,
-                        "recruit_count": recruit_count,
-                        "applicant_count": applicant_count,
-                    }
+                        category_raw=None,
+                        type_hint=category,
+                        # 제목 끝의 "_릴스" 같은 채널 표기는 normalize가 제목에서 떼어 channels로 옮긴다.
+                        channels_raw=card["media"],
+                    )
                 )
 
         browser.close()
@@ -171,7 +198,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv("../.env.local")
-    items = fetch_campaigns()
+    items = RevuConnector().fetch()
     print(f"수집된 캠페인: {len(items)}개")
     for c in items[:5]:
         print(c)

@@ -13,12 +13,12 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
 UPSERT_SQL = """
 insert into public.campaigns
     (platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category,
-     category_raw, campaign_type, description, image_url, vendor, recruit_count, applicant_count,
-     is_active)
+     category_raw, campaign_type, review_channels, description, image_url, vendor, recruit_count,
+     applicant_count, is_active)
 values
     (%(platform)s, %(title)s, %(region_sido)s, %(region_gugun)s, %(deadline_date)s,
      %(announce_date)s, %(source_url)s, %(category)s, %(category_raw)s, %(campaign_type)s,
-     %(description)s, %(image_url)s, %(vendor)s, %(recruit_count)s, %(applicant_count)s,
+     %(review_channels)s, %(description)s, %(image_url)s, %(vendor)s, %(recruit_count)s, %(applicant_count)s,
      %(is_active)s)
 on conflict (source_url) do update set
     title = excluded.title,
@@ -29,6 +29,7 @@ on conflict (source_url) do update set
     category = excluded.category,
     category_raw = excluded.category_raw,
     campaign_type = excluded.campaign_type,
+    review_channels = excluded.review_channels,
     description = excluded.description,
     image_url = excluded.image_url,
     vendor = excluded.vendor,
@@ -48,6 +49,7 @@ where is_active
 _DEFAULTS = {
     "category_raw": None,
     "campaign_type": None,
+    "review_channels": [],
     "is_active": True,
     "description": None,
     "image_url": None,
@@ -58,7 +60,7 @@ _DEFAULTS = {
 
 _COLUMNS = {
     "platform", "title", "region_sido", "region_gugun", "deadline_date", "announce_date",
-    "source_url", "category", "category_raw", "campaign_type", "description", "image_url",
+    "source_url", "category", "category_raw", "campaign_type", "review_channels", "description", "image_url",
     "vendor", "recruit_count", "applicant_count", "is_active",
 }
 
