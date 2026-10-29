@@ -2,8 +2,8 @@
 
 구조 메모 (2026-10-29 probe.py 조사):
 - 목록 1페이지: GET https://dinnerqueen.net/taste?ct=전체 — 서버 렌더링, 카드 30개.
-- 다음 페이지: 무한스크롤이 POST /taste/taste_list?ct=전체&area1=전국&area2=전체&page=N 을 불러
-  같은 마크업의 카드 HTML 조각을 받는다.
+- 다음 페이지: 무한스크롤이 POST /taste/taste_list?...&page=N 으로 같은 마크업의 카드 조각을 받는다.
+  requests로 같은 요청을 보내면 첫 페이지가 다시 와서, 브라우저로 스크롤해 불러온다.
 - 카드: <div class="qz-dq-card campaign">
     <a class="qz-dq-card__link" href="/taste/1617679" title="[프리미엄][릴스][에이지투웨니스] 시그니처 에센스팩트 기획세트 신청하기">
       <img alt="..." src="https://dq-files.gcdn.ntruss.com/posts/....webp">
@@ -17,17 +17,14 @@
 from __future__ import annotations
 
 import re
-import time
 from urllib.parse import urljoin
 
-import requests
 from bs4 import BeautifulSoup
 
-from connectors.base import Connector, RawCampaign, get_with_retry, split_title_brackets
+from connectors.base import Connector, RawCampaign, split_title_brackets
 
 BASE_URL = "https://dinnerqueen.net"
 LIST_URL = f"{BASE_URL}/taste"
-MORE_URL = f"{BASE_URL}/taste/taste_list"
 HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
 
 DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*(?:남음|남았)")
@@ -91,45 +88,46 @@ class DinnerqueenConnector(Connector):
     key = "dinnerqueen"
     label = "디너의여왕"
     base_url = BASE_URL
+    # 다음 페이지 POST를 requests로 흉내 내면 첫 페이지가 그대로 다시 온다 (2026-10-29 시험 실행) —
+    # 사이트가 실제로 하는 대로 브라우저에서 스크롤해서 불러온다.
+    needs_browser = True
     # 뱃지에 릴스/클립만 따로 표시되고 나머지는 블로그 체험단이다
     default_channels = ("blog",)
 
-    def __init__(self, max_pages: int = 6):
-        self.max_pages = max_pages
+    def __init__(self, scrolls: int = 8):
+        self.scrolls = scrolls
 
     def fetch(self) -> list[RawCampaign]:
-        params = {"ct": "전체"}
-        # 다음 페이지 요청은 첫 페이지에서 받은 세션 쿠키가 있어야 응답한다
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        resp = get_with_retry(session, LIST_URL, params=params)
-        campaigns = parse_cards(resp.text)
-        seen = {c.source_url for c in campaigns}
+        from playwright.sync_api import sync_playwright
 
-        for page in range(2, self.max_pages + 1):
-            time.sleep(2)
-            try:
-                more = get_with_retry(
-                    session,
-                    MORE_URL,
-                    method="POST",
-                    params={**params, "area1": "전국", "area2": "전체", "page": page, "ctype": "", "query": ""},
-                    headers={"X-Requested-With": "XMLHttpRequest", "Referer": resp.url},
-                )
-            except requests.RequestException as e:
-                print(f"[디너의여왕] {page}페이지 요청 실패: {e}")
-                break
-            new = [c for c in parse_cards(more.text) if c.source_url not in seen]
-            print(f"[디너의여왕] {page}페이지: 응답 {len(more.text)}바이트, 새 카드 {len(new)}개")
-            if not new:
-                break
-            seen.update(c.source_url for c in new)
-            campaigns += new
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(user_agent=HEADERS["User-Agent"])
+            page.goto(f"{LIST_URL}?ct=전체", wait_until="networkidle", timeout=45000)
+            page.wait_for_selector("div.qz-dq-card.campaign", timeout=20000)
+            for i in range(self.scrolls):
+                before = page.locator("div.qz-dq-card.campaign").count()
+                page.mouse.wheel(0, 8000)
+                page.wait_for_timeout(2000)
+                after = page.locator("div.qz-dq-card.campaign").count()
+                print(f"[디너의여왕] 스크롤 {i + 1}: 카드 {before} → {after}")
+                if after == before:
+                    break
+            html = page.content()
+            browser.close()
+
+        campaigns: list[RawCampaign] = []
+        seen: set[str] = set()
+        for c in parse_cards(html):
+            if c.source_url not in seen:
+                seen.add(c.source_url)
+                campaigns.append(c)
+        reels = sum(1 for c in campaigns if c.channels_raw)
+        print(f"[디너의여왕] 릴스/클립 뱃지가 있는 카드 {reels}/{len(campaigns)}")
         return campaigns
 
-
 if __name__ == "__main__":
-    items = DinnerqueenConnector(max_pages=2).fetch()
+    items = DinnerqueenConnector(scrolls=2).fetch()
     print(f"수집된 캠페인: {len(items)}개")
     for c in items[:5]:
         print(c)
