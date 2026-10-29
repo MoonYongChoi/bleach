@@ -42,6 +42,11 @@ APPLICANT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*(\d+)\s*명")
 
 
 def _login(context) -> bool:
+    """로그인 후 /login 이 아닌 페이지로 넘어갔는지로 판정한다.
+
+    예전엔 "페이지에 로그인 링크가 없으면 성공"으로 봤는데, 로그인 페이지 자체에도 그 링크가 없어서
+    로그인이 실패해도 성공으로 판정됐다 (2026-10-29 레뷰 0건 수집의 원인).
+    """
     email = os.environ.get("REVU_ID")
     pw = os.environ.get("REVU_PW")
     if not email or not pw:
@@ -52,11 +57,24 @@ def _login(context) -> bool:
     page.fill("input[name=email]", email)
     page.fill("input[name=password]", pw)
     page.click('button:has-text("로그인")')
-    page.wait_for_timeout(2500)
-
-    logged_in = page.locator('a[href="/login"]').count() == 0
-    page.close()
-    return logged_in
+    try:
+        page.wait_for_url(lambda url: "/login" not in url, timeout=15000)
+        page.close()
+        return True
+    except Exception:  # noqa: BLE001 - 시간 초과 = 로그인 실패, 이유를 모아서 알린다
+        body = page.inner_text("body")
+        has_captcha = page.locator('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]').count() > 0
+        hint = next(
+            (line.strip() for line in body.splitlines()
+             if any(k in line for k in ("비밀번호", "아이디", "이메일", "일치", "잠금", "제한", "인증"))),
+            "",
+        )
+        page.close()
+        raise RuntimeError(
+            "레뷰 로그인 실패"
+            + (" — reCAPTCHA가 떴습니다 (반복 로그인으로 차단됐을 수 있음)" if has_captcha else "")
+            + (f" — 사이트 메시지: {hint[:80]}" if hint else "")
+        )
 
 
 CLOSED_MARKERS = ("모집마감", "마감완료", "모집완료", "발표완료")
