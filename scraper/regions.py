@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import re
+
 # 지역이 아니라 캠페인 유형을 뜻하는 라벨 — 지역 칸에 넣지 않고 campaign_type으로 보낸다.
 NON_GEO_LABELS = {"배송", "기자단", "실시간", "누구나", "전국", "재택", "구매평", "구매", "방문자"}
 
@@ -60,6 +62,30 @@ SIDO_NAMES = {
     "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
 }
 
+# 해외 방문 체험은 시/도 칸에 "해외", 시/군/구 칸에 나라 이름을 넣는다 (필터에서 해외 > 일본 식으로 고름).
+OVERSEAS = "해외"
+# 나라·주요 도시 -> 나라. 지역 칸(레뷰 "[일본]" 괄호 등)에 올 때만 쓴다 — 제목의 "홍콩", "하와이"는
+# 국내 가게 이름인 경우가 많아서(굿모닝홍콩 전포점, 하와이조개 당산점) 보지 않는다.
+OVERSEAS_PLACES: dict[str, str] = {}
+for _country, _places in {
+    "일본": ["일본", "도쿄", "오사카", "후쿠오카", "교토", "삿포로", "오키나와", "나고야", "요코하마"],
+    "베트남": ["베트남", "다낭", "호치민", "하노이", "나트랑", "푸꾸옥"],
+    "태국": ["태국", "방콕", "치앙마이", "푸켓", "파타야"],
+    "대만": ["대만", "타이베이", "가오슝"],
+    "중국": ["중국", "상하이", "베이징", "칭다오"],
+    "홍콩·마카오": ["홍콩", "마카오"],
+    "싱가포르": ["싱가포르"],
+    "필리핀": ["필리핀", "세부", "보라카이", "마닐라"],
+    "인도네시아": ["인도네시아", "발리"],
+    "말레이시아": ["말레이시아", "코타키나발루", "쿠알라룸푸르"],
+    "괌·사이판": ["괌", "사이판"],
+    "미국": ["미국", "하와이", "뉴욕", "LA", "로스앤젤레스"],
+    "유럽": ["유럽", "프랑스", "파리", "영국", "런던", "이탈리아", "스페인"],
+    "해외": ["해외"],
+}.items():
+    for _place in _places:
+        OVERSEAS_PLACES[_place] = _country
+
 # 공식/긴 표기 -> DB에서 쓰는 두 글자 표기
 SIDO_ALIASES = {
     "서울특별시": "서울", "서울시": "서울",
@@ -106,7 +132,7 @@ def normalize_sido(raw: str | None) -> str | None:
     if not raw:
         return None
     raw = raw.strip()
-    if raw in SIDO_NAMES:
+    if raw in SIDO_NAMES or raw == OVERSEAS:
         return raw
     return SIDO_ALIASES.get(raw)
 
@@ -143,6 +169,12 @@ def resolve_region(raw: str | None) -> tuple[str | None, str | None]:
 
     if raw in AREA_ALIASES:
         return AREA_ALIASES[raw]
+
+    # "일본", "도쿄", "일본/오사카"
+    overseas = [OVERSEAS_PLACES[t] for t in re.split(r"[/·,\s]+", raw) if t in OVERSEAS_PLACES]
+    if overseas:
+        countries = [c for c in dict.fromkeys(overseas) if c != OVERSEAS]
+        return OVERSEAS, "/".join(countries) or None
 
     # "서울 강남구", "용산/중구", "경기 · 수원" 등
     tokens = [t for t in raw.replace("·", " ").replace("/", " ").replace(",", " ").split() if t]

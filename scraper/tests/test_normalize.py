@@ -299,6 +299,17 @@ class GenericTest(unittest.TestCase):
         r = norm({**PavlovuTest.RAW, "region_raw": "중구"}).record  # 시/도 모르면 하위 지역 필터 대상 아님
         self.assertEqual(r["region_guguns"], [])
 
+    def test_overseas_regions(self):
+        # 실제 DB: 레뷰 "[일본] 무츠카리 우에노점 (도쿄)"
+        self.assertEqual(resolve_region("일본"), ("해외", "일본"))
+        self.assertEqual(resolve_region("다낭"), ("해외", "베트남"))
+        self.assertEqual(resolve_region("해외"), ("해외", None))
+        r = norm({**RevuTest().product(), "type_hint": "지역", "region_raw": "일본", "title": "무츠카리 우에노점 (도쿄)"}).record
+        self.assertEqual((r["region_sido"], r["region_guguns"]), ("해외", ["일본"]))
+        # 다시 정제해도(backfill) 해외가 유지된다
+        again = normalize_for(BY_LABEL["레뷰"], BY_LABEL["레뷰"].from_db_row(r), today=TODAY).record
+        self.assertEqual((again["region_sido"], again["region_gugun"]), ("해외", "일본"))
+
     def test_regions(self):
         self.assertEqual(resolve_region("중구"), (None, "중구"))  # 여러 시/도에 있음 → 모호
         self.assertEqual(resolve_region("서울 중구"), ("서울", "중구"))
