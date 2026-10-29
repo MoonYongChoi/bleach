@@ -11,8 +11,10 @@ export interface Campaign {
   announce_date: string | null;
   source_url: string;
   category: string | null;
-  /** 방문 / 배송 / 기자단 / 기타 — scraper/normalize.py가 채운다 */
+  /** 방문 / 배송 / 구매 / 기자단 / 재택 / 기타 — scraper/normalize.py가 채운다 */
   campaign_type: string | null;
+  /** blog / instagram / reels / youtube / shorts / tiktok / clip */
+  review_channels: string[];
   description: string | null;
   image_url: string | null;
   vendor: string | null;
@@ -21,7 +23,18 @@ export interface Campaign {
   created_at: string;
 }
 
-export type SortOption = "deadline" | "latest";
+/**
+ * deadline: 마감일 가까운 순 / latest: 새로 올라온 순
+ * competition: 지원률(신청÷모집) 낮은 순 — 붙을 확률이 높은 것부터 / recruit: 모집인원 많은 순
+ */
+export type SortOption = "deadline" | "latest" | "competition" | "recruit";
+
+export const SORT_OPTIONS: { value: SortOption; label: string; hint: string }[] = [
+  { value: "deadline", label: "마감임박순", hint: "마감일이 가까운 체험단부터" },
+  { value: "competition", label: "경쟁 낮은순", hint: "모집인원 대비 신청자가 적은 순" },
+  { value: "recruit", label: "모집인원 많은순", hint: "한 번에 많이 뽑는 체험단부터" },
+  { value: "latest", label: "최신 등록순", hint: "BLEACH에 새로 올라온 순" },
+];
 
 export interface ApplyRateRange {
   min: number;
@@ -30,29 +43,59 @@ export interface ApplyRateRange {
 
 export interface CampaignFilters {
   search?: string;
+  /** 시/도 전체 선택 */
   sidos?: string[];
+  /** 하위 지역 선택: "경기 하남시" 형태 (시/도 + 공백 + 시/군/구). 같은 시/도가 sidos에 있으면 무시 */
+  guguns?: string[];
   categories?: string[];
   platforms?: string[];
+  types?: string[];
+  channels?: string[];
   applyRate?: ApplyRateRange;
+  /** 지정하면 이 id들만 (관심 목록 보기) */
+  ids?: string[];
   sort?: SortOption;
 }
 
 /** 체험단 플랫폼 — 스크래퍼가 고정으로 다루는 3곳이라 DB 조회 없이 상수로 둔다. */
 export const PLATFORMS = ["레뷰", "파블로", "리뷰노트"] as const;
 
+/** campaign_type 값 → 화면 표시 (사용자가 고르는 기준인 "무엇을 하게 되는가"로 이름 붙임) */
+export const CAMPAIGN_TYPE_LABELS: Record<string, { label: string; hint: string }> = {
+  방문: { label: "방문 체험", hint: "매장에 가서 체험" },
+  배송: { label: "제품 제공", hint: "집으로 제품 배송" },
+  구매: { label: "구매 후 환급", hint: "직접 사고 돌려받기" },
+  기자단: { label: "기자단", hint: "체험 없이 원고만" },
+  재택: { label: "재택 체험", hint: "앱·온라인 서비스" },
+};
+
+/** review_channels 코드 → 화면 표시. scraper/normalize.py REVIEW_CHANNELS와 같은 순서. */
+export const REVIEW_CHANNEL_LABELS: Record<string, string> = {
+  blog: "블로그",
+  instagram: "인스타그램",
+  reels: "릴스",
+  youtube: "유튜브",
+  shorts: "쇼츠",
+  tiktok: "틱톡",
+  clip: "클립",
+};
+
 const SELECT_COLUMNS =
-  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, campaign_type, description, image_url, vendor, recruit_count, applicant_count, created_at";
+  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, campaign_type, review_channels, description, image_url, vendor, recruit_count, applicant_count, created_at";
 
 export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Campaign[]> {
-  // 지역/카테고리/업체/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
-  // 연속된 .in()/.ilike() 호출은 SQL WHERE ... AND ... 로 합쳐진다).
+  if (filters.ids && filters.ids.length === 0) return [];
+
+  // 지역/카테고리/업체/유형/채널/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
+  // 연속된 필터 호출은 SQL WHERE ... AND ... 로 합쳐진다). 같은 항목 안의 복수 선택은 OR.
   let query = supabase.from("campaigns").select(SELECT_COLUMNS).eq("is_active", true);
 
   if (filters.search) {
     query = query.ilike("title", `%${filters.search}%`);
   }
-  if (filters.sidos && filters.sidos.length > 0) {
-    query = query.in("region_sido", filters.sidos);
+  const regionClause = buildRegionClause(filters.sidos ?? [], filters.guguns ?? []);
+  if (regionClause) {
+    query = query.or(regionClause);
   }
   if (filters.categories && filters.categories.length > 0) {
     query = query.in("category", filters.categories);
@@ -60,10 +103,30 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
   if (filters.platforms && filters.platforms.length > 0) {
     query = query.in("platform", filters.platforms);
   }
+  if (filters.types && filters.types.length > 0) {
+    query = query.in("campaign_type", filters.types);
+  }
+  if (filters.channels && filters.channels.length > 0) {
+    // 고른 채널 중 하나라도 요구하는 캠페인 (배열 교집합)
+    query = query.overlaps("review_channels", filters.channels);
+  }
+  if (filters.ids) {
+    query = query.in("id", filters.ids);
+  }
 
-  if (filters.sort === "deadline") {
-    query = query.order("deadline_date", { ascending: true, nullsFirst: false });
-  } else {
+  switch (filters.sort) {
+    case "deadline":
+      // 상시모집(마감일 없음)은 맨 뒤로
+      query = query.order("deadline_date", { ascending: true, nullsFirst: false });
+      break;
+    case "recruit":
+      query = query.order("recruit_count", { ascending: false, nullsFirst: false });
+      break;
+    default:
+      query = query.order("created_at", { ascending: false });
+  }
+  // 같은 마감일/모집인원 안에서는 최신 등록순으로 순서를 고정 (새로고침마다 순서가 섞이지 않게)
+  if (filters.sort === "deadline" || filters.sort === "recruit") {
     query = query.order("created_at", { ascending: false });
   }
 
@@ -73,41 +136,110 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
   const { data, error } = await query.limit(1000);
   if (error) throw error;
 
-  // 지원률(applicant_count / recruit_count)은 계산된 값이라 PostgREST where절로
-  // 못 걸러서, 위 필터들과 AND로 합쳐지도록 클라이언트에서 한 번 더 좁힌다.
-  const rows = data ?? [];
-  if (!filters.applyRate) return rows;
-  return rows.filter((row) => {
-    const rate = applyRate(row);
-    if (rate === null) return false;
-    return rate >= filters.applyRate!.min && rate <= filters.applyRate!.max;
-  });
+  // 지원률(applicant_count / recruit_count)은 계산된 값이라 PostgREST where절/정렬로
+  // 못 다뤄서, 위 필터들과 AND로 합쳐지도록 클라이언트에서 한 번 더 좁히고 정렬한다.
+  let rows = (data ?? []) as Campaign[];
+  if (filters.applyRate) {
+    const { min, max } = filters.applyRate;
+    rows = rows.filter((row) => {
+      const rate = applyRate(row);
+      return rate !== null && rate >= min && rate <= max;
+    });
+  }
+  if (filters.sort === "competition") {
+    // 지원률을 모르는 체험단은 맨 뒤로 (stable sort라 그 안에서는 최신순 유지)
+    rows = [...rows].sort((a, b) => (applyRate(a) ?? Infinity) - (applyRate(b) ?? Infinity));
+  }
+  return rows;
 }
 
-export async function fetchFilterOptions(): Promise<{
+/**
+ * 지역 선택 → PostgREST or() 조건. 예) 서울 전체 + 경기 하남시·수원시:
+ *   region_sido.in.(서울),and(region_sido.eq.경기,region_guguns.ov.{하남시,수원시})
+ */
+function buildRegionClause(sidos: string[], guguns: string[]): string | null {
+  const bySido = new Map<string, string[]>();
+  for (const key of guguns) {
+    const [sido, gugun] = splitGugunKey(key);
+    if (!sido || !gugun || sidos.includes(sido)) continue;
+    bySido.set(sido, [...(bySido.get(sido) ?? []), gugun]);
+  }
+  const parts: string[] = [];
+  if (sidos.length > 0) parts.push(`region_sido.in.(${sidos.join(",")})`);
+  for (const [sido, list] of bySido) {
+    parts.push(`and(region_sido.eq.${sido},region_guguns.ov.{${list.join(",")}})`);
+  }
+  return parts.length > 0 ? parts.join(",") : null;
+}
+
+export function gugunKey(sido: string, gugun: string) {
+  return `${sido} ${gugun}`;
+}
+
+export function splitGugunKey(key: string): [string, string] {
+  const i = key.indexOf(" ");
+  return [key.slice(0, i), key.slice(i + 1)];
+}
+
+export interface FilterOptions {
   sidos: string[];
+  /** 시/도별 하위 지역 (실제 데이터에 있는 것만, 체험단 많은 순) */
+  guguns: Record<string, { name: string; count: number }[]>;
   categories: string[];
-}> {
+  types: string[];
+  channels: string[];
+}
+
+export async function fetchFilterOptions(): Promise<FilterOptions> {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("region_sido, category")
+    .select("region_sido, region_guguns, category, campaign_type, review_channels")
     .eq("is_active", true);
   if (error) throw error;
 
   const sidos = new Set<string>();
   const categories = new Set<string>();
+  const types = new Set<string>();
+  const channels = new Set<string>();
+  const gugunCounts = new Map<string, Map<string, number>>();
   for (const row of data ?? []) {
-    if (row.region_sido) sidos.add(row.region_sido);
+    if (row.region_sido) {
+      sidos.add(row.region_sido);
+      const counts = gugunCounts.get(row.region_sido) ?? new Map<string, number>();
+      for (const g of row.region_guguns ?? []) counts.set(g, (counts.get(g) ?? 0) + 1);
+      gugunCounts.set(row.region_sido, counts);
+    }
     if (row.category) categories.add(row.category);
+    if (row.campaign_type && row.campaign_type in CAMPAIGN_TYPE_LABELS) types.add(row.campaign_type);
+    for (const c of row.review_channels ?? []) if (c in REVIEW_CHANNEL_LABELS) channels.add(c);
   }
-  // 카테고리는 스크래퍼가 표준 8종 라벨로 정규화해 두므로 categories.ts의 정의 순서대로 노출한다.
-  const order = CATEGORIES.map((c) => c.label);
-  const rank = (label: string) => (order.indexOf(label) === -1 ? order.length : order.indexOf(label));
+
+  // 실제 데이터에 있는 값만 보여주되, 순서는 정의된 표준 순서를 따른다.
+  const byOrder = (order: string[]) => (a: string, b: string) => {
+    const rank = (v: string) => (order.indexOf(v) === -1 ? order.length : order.indexOf(v));
+    return rank(a) - rank(b) || a.localeCompare(b);
+  };
   return {
-    sidos: [...sidos].sort(),
-    categories: [...categories].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
+    sidos: [...sidos].sort(byOrder(SIDO_ORDER)),
+    guguns: Object.fromEntries(
+      [...gugunCounts].map(([sido, counts]) => [
+        sido,
+        [...counts]
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+      ])
+    ),
+    categories: [...categories].sort(byOrder(CATEGORIES.map((c) => c.label))),
+    types: [...types].sort(byOrder(Object.keys(CAMPAIGN_TYPE_LABELS))),
+    channels: [...channels].sort(byOrder(Object.keys(REVIEW_CHANNEL_LABELS))),
   };
 }
+
+// 가나다순이 아니라 사람들이 익숙한 행정구역 순서 (수도권 → 광역시 → 도)
+const SIDO_ORDER = [
+  "서울", "경기", "인천", "부산", "대구", "광주", "대전", "울산", "세종",
+  "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+];
 
 /** 지원률 = 현재 신청(대기)인원 / 전체 모집인원. 둘 중 하나라도 없으면 null. */
 export function applyRate(campaign: Pick<Campaign, "recruit_count" | "applicant_count">): number | null {

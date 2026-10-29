@@ -16,7 +16,7 @@ from connectors import BY_LABEL
 from normalize import normalize_for
 
 UPDATED_COLUMNS = (
-    "title", "region_sido", "region_gugun", "category", "category_raw", "campaign_type",
+    "title", "region_sido", "region_gugun", "region_guguns", "category", "category_raw", "campaign_type",
     "review_channels", "description", "image_url", "recruit_count", "applicant_count", "is_active",
 )
 
@@ -43,6 +43,7 @@ def plan(rows: list[dict]) -> tuple[list[dict], Counter]:
 UPDATE_SQL = """
 update public.campaigns set
     title = %(title)s, region_sido = %(region_sido)s, region_gugun = %(region_gugun)s,
+    region_guguns = %(region_guguns)s,
     category = %(category)s, category_raw = %(category_raw)s, campaign_type = %(campaign_type)s,
     review_channels = %(review_channels)s,
     description = %(description)s, image_url = %(image_url)s, recruit_count = %(recruit_count)s,

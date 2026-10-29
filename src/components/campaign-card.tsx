@@ -1,6 +1,13 @@
+import { StarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Campaign, dDay } from "@/lib/campaigns";
+import {
+  type Campaign,
+  CAMPAIGN_TYPE_LABELS,
+  dDay,
+  REVIEW_CHANNEL_LABELS,
+} from "@/lib/campaigns";
+import { cn } from "cn";
 
 function DdayLabel({ deadlineDate }: { deadlineDate: string | null }) {
   if (!deadlineDate) {
@@ -20,13 +27,18 @@ function DdayLabel({ deadlineDate }: { deadlineDate: string | null }) {
   );
 }
 
-export function CampaignCard({ campaign }: { campaign: Campaign }) {
-  // 배송형/기자단은 지역이 없으므로 대신 유형을 보여준다.
-  const region =
-    [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ") ||
-    (campaign.campaign_type && campaign.campaign_type !== "방문" && campaign.campaign_type !== "기타"
-      ? `${campaign.campaign_type}형`
-      : "");
+export function CampaignCard({
+  campaign,
+  favorite,
+  onToggleFavorite,
+}: {
+  campaign: Campaign;
+  favorite: boolean;
+  onToggleFavorite: () => void;
+}) {
+  const typeLabel = campaign.campaign_type ? CAMPAIGN_TYPE_LABELS[campaign.campaign_type]?.label : undefined;
+  const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
+  const channels = campaign.review_channels.map((c) => REVIEW_CHANNEL_LABELS[c] ?? c);
   const metaParts = [
     region || null,
     campaign.deadline_date ? `~${campaign.deadline_date.slice(5).replace("-", ".")} 모집` : null,
@@ -36,49 +48,70 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
   ].filter(Boolean);
 
   return (
-    <a
-      href={campaign.source_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
-    >
-      {campaign.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet
-        <img
-          src={campaign.image_url}
-          alt=""
-          className="size-16 shrink-0 rounded-xl object-cover"
-        />
-      ) : (
-        <div className="size-16 shrink-0 rounded-xl bg-muted" />
-      )}
+    <div className="relative flex rounded-2xl border border-border bg-card transition-colors hover:bg-muted/40">
+      <a
+        href={campaign.source_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex min-w-0 flex-1 gap-3 p-4 pr-1"
+      >
+        {campaign.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet
+          <img
+            src={campaign.image_url}
+            alt=""
+            className="size-16 shrink-0 rounded-xl object-cover"
+          />
+        ) : (
+          <div className="size-16 shrink-0 rounded-xl bg-muted" />
+        )}
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center justify-between gap-2">
-          <Badge variant="secondary" className="font-normal text-muted-foreground">
-            {campaign.platform}
-          </Badge>
-          <DdayLabel deadlineDate={campaign.deadline_date} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+              <Badge variant="secondary" className="font-normal text-muted-foreground">
+                {campaign.platform}
+              </Badge>
+              {typeLabel && (
+                <Badge variant="outline" className="font-normal text-muted-foreground">
+                  {typeLabel}
+                </Badge>
+              )}
+            </div>
+            <DdayLabel deadlineDate={campaign.deadline_date} />
+          </div>
+          {campaign.vendor && (
+            <p className="line-clamp-1 text-xs font-medium text-foreground/70">{campaign.vendor}</p>
+          )}
+          <p className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
+            {campaign.title}
+          </p>
+          {campaign.description && (
+            <p className="line-clamp-1 text-xs text-muted-foreground">{campaign.description}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            {metaParts.map((part, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-border">·</span>}
+                {part}
+              </span>
+            ))}
+          </div>
+          {channels.length > 0 && (
+            <p className="text-xs font-medium text-primary">{channels.join(" · ")} 리뷰</p>
+          )}
         </div>
-        {campaign.vendor && (
-          <p className="line-clamp-1 text-xs font-medium text-foreground/70">{campaign.vendor}</p>
-        )}
-        <p className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground">
-          {campaign.title}
-        </p>
-        {campaign.description && (
-          <p className="line-clamp-1 text-xs text-muted-foreground">{campaign.description}</p>
-        )}
-        <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          {metaParts.map((part, i) => (
-            <span key={i} className="flex items-center gap-1.5">
-              {i > 0 && <span className="text-border">·</span>}
-              {part}
-            </span>
-          ))}
-        </div>
-      </div>
-    </a>
+      </a>
+
+      <button
+        onClick={onToggleFavorite}
+        aria-pressed={favorite}
+        aria-label={favorite ? "관심 해제" : "관심 체험단에 추가"}
+        className="flex w-11 shrink-0 items-start justify-center pt-11 text-muted-foreground/60 hover:text-amber-500 focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <StarIcon className={cn("size-5", favorite && "fill-amber-400 text-amber-400")} />
+      </button>
+    </div>
   );
 }
 

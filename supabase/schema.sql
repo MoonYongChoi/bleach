@@ -13,6 +13,8 @@ create table if not exists public.campaigns (
   -- 3. 지역/위치 (예: 서울 / 강남구, 전국(배송)은 region_gugun = null)
   region_sido text,
   region_gugun text,
+  -- 하위 지역 필터용: region_gugun을 '/'로 나눈 배열 (시/도가 해석된 경우에만)
+  region_guguns text[] not null default '{}',
 
   -- 4. 일정/마감일
   deadline_date date,
@@ -51,6 +53,7 @@ create index if not exists campaigns_region_idx on public.campaigns (region_sido
 create index if not exists campaigns_category_idx on public.campaigns (category);
 create index if not exists campaigns_platform_idx on public.campaigns (platform);
 create index if not exists campaigns_type_idx on public.campaigns (campaign_type);
+create index if not exists campaigns_guguns_idx on public.campaigns using gin (region_guguns);
 create index if not exists campaigns_channels_idx on public.campaigns using gin (review_channels);
 
 -- RLS: 프론트(anon key)는 읽기만, 쓰기는 service_role(크롤러)만

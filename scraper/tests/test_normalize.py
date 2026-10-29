@@ -287,6 +287,14 @@ class GenericTest(unittest.TestCase):
         r = norm({"platform": "파블로", "title": "t", "source_url": "u", "region_raw": "구매"}).record
         self.assertEqual(r["campaign_type"], "구매")
 
+    def test_region_guguns_array(self):
+        r = norm({**PavlovuTest.RAW, "region_raw": "서초/강남"}).record
+        self.assertEqual(r["region_guguns"], ["서초구", "강남구"])
+        r = norm({**PavlovuTest.RAW, "region_raw": "부천/부평"}).record  # 부평구는 인천
+        self.assertEqual((r["region_sido"], r["region_guguns"]), ("경기", ["부천시"]))
+        r = norm({**PavlovuTest.RAW, "region_raw": "중구"}).record  # 시/도 모르면 하위 지역 필터 대상 아님
+        self.assertEqual(r["region_guguns"], [])
+
     def test_regions(self):
         self.assertEqual(resolve_region("중구"), (None, "중구"))  # 여러 시/도에 있음 → 모호
         self.assertEqual(resolve_region("서울 중구"), ("서울", "중구"))

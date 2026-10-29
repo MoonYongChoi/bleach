@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from regions import is_non_geo, normalize_sido, resolve_region
+from regions import GU_SI_TO_SIDO, is_non_geo, normalize_sido, resolve_region
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -376,6 +376,8 @@ def normalize_campaign(
         "title": title,
         "region_sido": region_sido,
         "region_gugun": region_gugun,
+        # 하위 지역 필터는 시/도가 확정된 경우에만 의미가 있다 ("중구"만으로는 어느 시인지 모름)
+        "region_guguns": _guguns_in(region_sido, region_gugun),
         "deadline_date": deadline,
         "announce_date": to_date(raw.get("announce_date")),
         "source_url": source_url,
@@ -391,6 +393,13 @@ def normalize_campaign(
         "is_active": is_active,
     }
     return NormalizeResult(record, issues)
+
+
+def _guguns_in(sido: Optional[str], gugun: Optional[str]) -> list[str]:
+    """region_gugun "부천시/부평구"(경기) -> ["부천시"]: 다른 시/도에 속한 구는 하위 지역 필터에서 뺀다."""
+    if not sido or not gugun:
+        return []
+    return [g for g in gugun.split("/") if g and sido in GU_SI_TO_SIDO.get(g, [sido])]
 
 
 def normalize_for(connector, raw, today: Optional[date] = None) -> NormalizeResult:
