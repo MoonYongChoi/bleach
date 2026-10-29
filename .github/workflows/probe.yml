@@ -1,0 +1,31 @@
+name: Probe a new platform
+
+# 새 체험단 사이트를 붙이기 전에 페이지 구조를 조사한다 (scraper/probe.py). DB는 건드리지 않는다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "조사할 목록 페이지 URL (공백으로 여러 개)"
+        required: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Probe
+        env:
+          URLS: ${{ inputs.urls }}
+        run: python probe.py $URLS
