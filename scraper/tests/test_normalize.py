@@ -126,6 +126,12 @@ class ReviewnoteTest(unittest.TestCase):
         self.assertIsNone(r["region_sido"])
         self.assertEqual(r["category"], "식품·배송")
 
+    def test_remote_campaign(self):
+        # 실제 DB: 리뷰노트 재택 캠페인은 city/sido 둘 다 "재택"
+        r = norm({**self.RAW, "region_sido": "재택", "region_gugun": "재택", "type_hint": "ETC"}).record
+        self.assertEqual(r["campaign_type"], "재택")
+        self.assertEqual((r["region_sido"], r["region_gugun"]), (None, None))
+
     def test_string_counts(self):
         r = norm({**self.RAW, "recruit_count": "5", "applicant_count": "1,678"}).record
         self.assertEqual((r["recruit_count"], r["applicant_count"]), (5, 1678))
@@ -157,6 +163,14 @@ class PavlovuTest(unittest.TestCase):
         self.assertEqual(r["campaign_type"], "방문")
         self.assertIsNone(r["image_url"])  # 상대경로는 스크래퍼가 절대경로로 바꿔야 함
         self.assertIn("no_image", res.issues)
+
+    def test_reward_only_title_hidden(self):
+        # 실제 DB: 파블로 기자단 39건이 제목 "5,000포인트", 제공내역 "추가 안내사항"
+        res = norm({**self.RAW, "title": "5,000포인트", "description": "추가 안내사항", "region_raw": "기자단"})
+        self.assertFalse(res.record["is_active"])
+        self.assertIn("title_is_reward", res.issues)
+        self.assertIsNone(res.record["description"])
+        self.assertEqual(res.record["campaign_type"], "기자단")
 
     def test_cafe_refines_matjip(self):
         r = norm({**self.RAW, "title": "성수 베이커리 카페", "region_raw": "성수"}).record
@@ -202,6 +216,15 @@ class GenericTest(unittest.TestCase):
     def test_http_image_upgraded(self):
         r = norm({"platform": "파블로", "title": "t", "source_url": "u", "image_url": "//pavlovu.com/a.jpg"}).record
         self.assertEqual(r["image_url"], "https://pavlovu.com/a.jpg")
+
+    def test_real_pavlovu_regions(self):
+        # 실제 DB에 있던 파블로 지역 값들
+        self.assertEqual(resolve_region("서초/강남"), ("서울", "서초구/강남구"))
+        self.assertEqual(resolve_region("인천/송도"), ("인천", "연수구"))
+        self.assertEqual(resolve_region("충남/세종")[0], "충남")
+        self.assertEqual(resolve_region("구매"), (None, None))
+        r = norm({"platform": "파블로", "title": "t", "source_url": "u", "region_raw": "구매"}).record
+        self.assertEqual(r["campaign_type"], "배송")
 
     def test_regions(self):
         self.assertEqual(resolve_region("중구"), (None, "중구"))  # 여러 시/도에 있음 → 모호

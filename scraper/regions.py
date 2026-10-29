@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 # 지역이 아니라 캠페인 유형을 뜻하는 라벨 — 지역 칸에 넣지 않고 campaign_type으로 보낸다.
-NON_GEO_LABELS = {"배송", "기자단", "실시간", "누구나", "전국", "재택", "구매평"}
+NON_GEO_LABELS = {"배송", "기자단", "실시간", "누구나", "전국", "재택", "구매평", "구매", "방문자"}
 
 # 시/군/구 이름 -> 시/도 후보 목록 (DB에 이미 쓰이고 있는 짧은 표기와 맞춤).
 # "중구", "강서구"처럼 여러 시/도에 동명 구/군이 있어 리스트로 둔다 — 같이 온 다른
@@ -153,7 +153,8 @@ def resolve_region(raw: str | None) -> tuple[str | None, str | None]:
     for token in tokens:
         s = normalize_sido(token)
         if s:
-            explicit_sido = s
+            # "충남/세종"처럼 시/도가 여러 개 묶여 오면 첫 번째를 대표로 쓴다.
+            explicit_sido = explicit_sido or s
             continue
         if token in AREA_ALIASES:
             a_sido, a_gugun = AREA_ALIASES[token]

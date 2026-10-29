@@ -48,6 +48,7 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "젤라또", "도넛", "쿠키", "티룸", "와플", "빙수", "크로플",
     ),
     "맛집": (
+        "장어", "오징어", "바베큐", "비스트로", "혼술바", "안주", "노미호다이", "주류", "식사", "타코",
         "맛집", "식당", "레스토랑", "다이닝", "고기", "삼겹", "갈비", "한우", "곱창", "막창",
         "족발", "보쌈", "초밥", "스시", "오마카세", "횟집", "물회", "생선회", "회센터", "파스타", "피자", "치킨",
         "국밥", "냉면", "칼국수", "떡볶이", "분식", "라멘", "쌀국수", "이자카야", "술집",
@@ -55,49 +56,63 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "마라", "훠궈", "돈까스", "우동", "주물럭", "식사권", "인분",
     ),
     "뷰티": (
+        "마스카라", "마스크", "살롱", "반영구", "시술", "클리닉", "염색", "브로우", "목걸이", "장갑", "명품",
         "화장품", "스킨", "크림", "세럼", "앰플", "토너", "마스크팩", "선크림", "선스틱",
         "립스틱", "립밤", "립틴트", "쿠션", "클렌징", "샴푸", "트리트먼트", "헤어", "미용실", "네일", "속눈썹",
         "왁싱", "피부", "에스테틱", "피부관리", "메이크업", "향수", "바디", "탈모", "두피",
         "뷰티", "패션", "의류", "주얼리", "액세서리", "가방", "신발", "마사지기",
     ),
     "여행·숙박": (
+        "1박", "가옥", "한옥",
         "호텔", "펜션", "리조트", "숙박", "글램핑", "캠핑", "풀빌라", "게스트하우스",
         "스테이", "숙소", "여행", "투어", "모텔", "객실",
     ),
     "식품·배송": (
+        "와인", "소비뇽", "맥주",
+        "과자", "크런치", "먹거리", "연어",
         "식품", "간식", "샐러드", "밀키트", "도시락", "음료", "주스", "즙", "건강식품",
         "영양제", "비타민", "유산균", "단백질", "프로틴", "김치", "반찬", "과일", "쌀",
         "소스", "견과", "젤리", "티백", "닭가슴살", "1팩", "2팩", "3팩", "1박스",
     ),
     "디지털": (
+        "전자랜드", "전자", "휴대폰", "인터넷", "TV", "베스트샵",
         "이어폰", "헤드폰", "충전기", "보조배터리", "스마트", "노트북", "키보드", "마우스",
         "모니터", "가전", "청소기", "공기청정기", "블루투스", "카메라", "태블릿", "케이스",
         "스피커", "앱 ", "어플",
     ),
     "문화·여가": (
+        "피티", "콘서트",
+        "심레이싱", "테니스", "레슨", "댄스", "스튜디오", "사주", "궁합", "신점", "소개팅", "자유이용권", "체형",
         "공연", "전시", "박람회", "페어", "뮤지컬", "영화", "클래스", "원데이", "공방",
         "방탈출", "볼링", "골프", "필라테스", "요가", "헬스", "PT", "수영", "도서", "책",
         "키즈카페", "파티", "입장권", "티켓", "체험권", "축제", "푸드위크",
     ),
     "생활": (
+        "사료", "탈취제", "보호대", "다이어리", "깔창", "키링", "자동차", "검사소", "공업사", "도색", "재무", "컨설팅",
         "청소", "세제", "수납", "주방", "생활용품", "반려", "강아지", "고양이", "펫",
         "유아", "아기", "베이비", "육아", "인테리어", "가구", "매트리스", "침구", "이사",
         "세차", "렌탈", "꽃", "텀블러", "학원", "병원", "치과", "한의원",
     ),
 }
 
-CAMPAIGN_TYPES = ("방문", "배송", "기자단", "기타")
+CAMPAIGN_TYPES = ("방문", "배송", "기자단", "재택", "기타")
 TYPE_HINTS = {
     # 리뷰노트 sort
     "VISIT": "방문", "DELIVERY": "배송", "PURCHASE": "배송", "REPORTER": "기자단", "PRESS": "기자단",
     # 레뷰 카테고리 페이지 / 파블로 카테고리·지역 칸
     "지역": "방문", "방문": "방문", "출장": "방문",
-    "제품": "배송", "배송": "배송", "구매평": "배송",
+    "제품": "배송", "배송": "배송", "구매평": "배송", "구매": "배송",
+    "방문자": "방문",
     "기자단": "기자단",
+    "재택": "재택",  # 리뷰노트는 재택 캠페인의 city/sido 칸에 "재택"을 넣어 보낸다
 }
 
 _PLACEHOLDER_IMAGE_RE = re.compile(r"(blank|noimage|no_image|placeholder|spacer|default)\.(gif|png|jpe?g|svg)", re.I)
 _WS_RE = re.compile(r"\s+")
+# 파블로 기자단 카드는 <strong>에 캠페인명이 아니라 보상("5,000포인트")이 들어 있다.
+_REWARD_ONLY_TITLE_RE = re.compile(r"^[\d,]+\s*(포인트|P|원)$")
+# 상세페이지에서 "제공내역" 다음 줄로 잘못 잡히는 섹션 제목들
+_JUNK_DESCRIPTIONS = {"추가 안내사항", "안내사항", "상세 안내", "상세페이지 참고"}
 _BRACKET_PREFIX_RE = re.compile(r"^\s*[\[【(]([^\]】)]{1,20})[\]】)]\s*")
 
 
@@ -184,11 +199,11 @@ def to_date(value) -> Optional[date]:
 
 
 def infer_campaign_type(raw: dict) -> str:
-    for key in ("type_hint", "category_raw", "category", "region_raw", "region_gugun"):
+    for key in ("type_hint", "category_raw", "category", "region_raw", "region_sido", "region_gugun"):
         hint = raw.get(key)
         if isinstance(hint, str) and hint.strip() in TYPE_HINTS:
             return TYPE_HINTS[hint.strip()]
-    if raw.get("region_sido") or raw.get("region_raw"):
+    if (raw.get("region_sido") and not is_non_geo(raw["region_sido"])) or raw.get("region_raw"):
         return "방문"
     return "기타"
 
@@ -238,7 +253,7 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
         return NormalizeResult(None, ["missing_required"])
 
     description = clean_text(raw.get("description"))
-    if description == title:
+    if description == title or description in _JUNK_DESCRIPTIONS:
         description = None
     vendor = clean_text(raw.get("vendor"))
 
@@ -254,6 +269,10 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
     is_active = not (deadline and deadline < today)
     if not is_active:
         issues.append("expired")
+    if _REWARD_ONLY_TITLE_RE.match(title):
+        # 무엇을 하는 캠페인인지 알 수 없는 카드라 노출하지 않는다 (스크래퍼 셀렉터 수정 필요).
+        issues.append("title_is_reward")
+        is_active = False
     if deadline is None:
         issues.append("no_deadline")
 
@@ -274,19 +293,22 @@ def normalize_campaign(raw: dict, today: Optional[date] = None) -> NormalizeResu
 
     # 유형 / 지역
     campaign_type = infer_campaign_type(raw)
-    region_sido = normalize_sido(raw.get("region_sido"))
+    raw_sido = None if is_non_geo(raw.get("region_sido")) else raw.get("region_sido")
+    region_sido = normalize_sido(raw_sido)
     region_gugun = clean_text(raw.get("region_gugun"))
-    if raw.get("region_sido") and not region_sido:
+    if is_non_geo(region_gugun):
+        region_gugun = None
+    if raw_sido and not region_sido:
         # 시/도 칸에 시/도가 아닌 값이 왔으면 원본 텍스트로 다시 해석
-        region_sido, region_gugun = resolve_region(f"{raw['region_sido']} {region_gugun or ''}")
+        region_sido, region_gugun = resolve_region(f"{raw_sido} {region_gugun or ''}")
     if not region_sido and not region_gugun:
         region_sido, region_gugun = resolve_region(raw.get("region_raw"))
     elif region_gugun and not region_sido:
         region_sido, region_gugun = resolve_region(region_gugun)
     if is_non_geo(region_gugun):
         region_gugun = None
-    if campaign_type == "배송":
-        region_sido = region_gugun = None  # 배송형은 전국 대상 — 지역 필터에 섞이지 않게
+    if campaign_type in ("배송", "재택"):
+        region_sido = region_gugun = None  # 전국 대상 — 지역 필터에 섞이지 않게
     elif campaign_type == "방문" and not region_sido:
         issues.append("region_unresolved")
 

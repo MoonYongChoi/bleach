@@ -42,7 +42,9 @@
   - [ ] GitHub repo secrets 등록 필요: `DATABASE_URL`, `REVU_ID`, `REVU_PW`
 - [x] 플랫폼별 데이터 정제 레이어 — `scraper/normalize.py` (제목/마감일(KST)/인원/이미지/표준 8종 분류/지역/유형) + `scraper/tests/`
   - [x] 품질 리포트: `python run_all.py --dry-run`(수집 직후), `python quality.py`(DB)
-  - [ ] `supabase/migrations/20261029_normalize_fields.sql` 실행 (category_raw, campaign_type 컬럼)
+  - [x] `supabase/migrations/20261029_normalize_fields.sql` 실행 (category_raw, campaign_type 컬럼) + `backfill.py`로 기존 행 재정제
+  - [ ] 파블로 기자단 카드 제목 셀렉터 수정 (현재 제목 자리에 "5,000포인트" 같은 보상이 잡힘 → 비활성 처리 중)
+  - [ ] 파블로 상세페이지 마감일 파싱 점검 (기존 행 마감일 채움률 3.9%)
 - [ ] 크롤링 실패/차단 대응 로직(재시도, 로그) 보강 — 현재는 플랫폼별 try/except로 한 곳 실패해도 나머지는 계속 진행하는 수준
 
 ### Day 4~5: 모바일 UI 컴포넌트 제작

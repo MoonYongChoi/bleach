@@ -23,6 +23,7 @@ FIELDS = [
 
 ISSUE_LABELS = {
     "missing_required": "필수값(제목/URL) 누락 → 적재 제외",
+    "title_is_reward": "제목이 보상 금액뿐(예: 5,000포인트) → 비활성",
     "expired": "마감 지남 → 비활성",
     "no_deadline": "마감일 없음(상시모집 표시)",
     "deadline_too_far": "마감일 1년 초과 → 버림",
@@ -106,6 +107,7 @@ DB_CHECKS = {
     "'서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주')",
     "이미지 URL이 https 아님": "image_url is not null and image_url not like 'https://%'",
     "제목 앞에 [괄호] 남음": "title ~ '^\\s*\\['",
+    "활성인데 제목이 보상 금액뿐": "is_active and title ~ '^[0-9,]+\\s*(포인트|P|원)$'",
     "제목에 제공내역이 붙어 있음": "description is not null and title like '% - ' || description",
 }
 
