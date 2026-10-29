@@ -11,7 +11,7 @@ export interface Campaign {
   announce_date: string | null;
   source_url: string;
   category: string | null;
-  /** 방문 / 배송 / 구매 / 기자단 / 재택 / 기타 — scraper/normalize.py가 채운다 */
+  /** 방문 / 배송 / 구매 / 기자단 / 기타 — scraper/normalize.py가 채운다 */
   campaign_type: string | null;
   /** blog / instagram / reels / youtube / shorts / tiktok / clip */
   review_channels: string[];
@@ -65,10 +65,9 @@ export const PLATFORMS = ["레뷰", "파블로", "리뷰노트"] as const;
 /** campaign_type 값 → 화면 표시 (사용자가 고르는 기준인 "무엇을 하게 되는가"로 이름 붙임) */
 export const CAMPAIGN_TYPE_LABELS: Record<string, { label: string; hint: string }> = {
   방문: { label: "방문 체험", hint: "매장에 가서 체험" },
-  배송: { label: "제품 제공", hint: "집으로 제품 배송" },
+  배송: { label: "제품 제공", hint: "집으로 받아서 사용" },
   구매: { label: "구매 후 환급", hint: "직접 사고 돌려받기" },
   기자단: { label: "기자단", hint: "체험 없이 원고만" },
-  재택: { label: "재택 체험", hint: "앱·온라인 서비스" },
 };
 
 /** review_channels 코드 → 화면 표시. scraper/normalize.py REVIEW_CHANNELS와 같은 순서. */

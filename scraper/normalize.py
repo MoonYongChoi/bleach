@@ -91,16 +91,16 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# 방문: 매장 방문 체험형 / 배송: 제품 제공형 / 구매: 직접 구매 후 환급(페이백)형
-# 기자단: 원고만 작성(체험 없음) / 재택: 앱·서비스 등 집에서 하는 체험
-CAMPAIGN_TYPES = ("방문", "배송", "구매", "기자단", "재택", "기타")
+# 방문: 매장 방문 체험형 / 배송: 제품 제공형(집으로 받음) / 구매: 직접 구매 후 환급(페이백)형
+# 기자단: 원고만 작성(체험 없음). 리뷰노트의 "재택"은 실제 데이터상 전부 집으로 받는 제품이라 배송으로 합친다.
+CAMPAIGN_TYPES = ("방문", "배송", "구매", "기자단", "기타")
 # 플랫폼과 무관한 한국어 표기. 플랫폼 고유 표기는 Connector.type_hints에서 합쳐진다.
 COMMON_TYPE_HINTS = {
     "방문": "방문", "방문형": "방문", "체험": "방문",
     "배송": "배송", "배송형": "배송", "제품": "배송", "구매평": "배송",
     "구매": "구매", "페이백": "구매", "구매형": "구매",
     "기자단": "기자단",
-    "재택": "재택",
+    "재택": "배송",
 }
 
 # 리뷰 채널 표준 코드 (화면 표시 순서). src/lib/campaigns.ts 의 REVIEW_CHANNELS와 맞출 것.
@@ -363,7 +363,7 @@ def normalize_campaign(
         region_sido, region_gugun = resolve_region(region_gugun)
     if is_non_geo(region_gugun):
         region_gugun = None
-    if campaign_type in ("배송", "구매", "재택"):
+    if campaign_type in ("배송", "구매"):
         region_sido = region_gugun = None  # 전국 대상 — 지역 필터에 섞이지 않게
     elif campaign_type == "방문" and not region_sido:
         issues.append("region_unresolved")

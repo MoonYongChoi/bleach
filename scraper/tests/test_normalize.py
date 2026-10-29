@@ -134,9 +134,9 @@ class ReviewnoteTest(unittest.TestCase):
         self.assertEqual(r["category"], "식품·배송")
 
     def test_remote_campaign(self):
-        # 실제 DB: 리뷰노트 재택 캠페인은 city/sido 둘 다 "재택"
+        # 실제 DB: 리뷰노트 재택 캠페인은 city/sido 둘 다 "재택"이고, 내용은 전부 집으로 받는 제품
         r = norm({**self.RAW, "region_sido": "재택", "region_gugun": "재택", "type_hint": "ETC"}).record
-        self.assertEqual(r["campaign_type"], "재택")
+        self.assertEqual(r["campaign_type"], "배송")
         self.assertEqual((r["region_sido"], r["region_gugun"]), (None, None))
 
     def test_string_counts(self):
@@ -232,7 +232,7 @@ class ConnectorTest(unittest.TestCase):
             self.assertTrue(c.key and c.label and c.base_url, c)
             self.assertTrue(callable(c.fetch))
             for value in c.type_hints.values():
-                self.assertIn(value, ("방문", "배송", "구매", "기자단", "재택", "기타"))
+                self.assertIn(value, ("방문", "배송", "구매", "기자단", "기타"))
 
     def test_from_db_row_is_idempotent(self):
         # 이미 정제된 행을 다시 backfill해도 값이 바뀌지 않아야 한다
