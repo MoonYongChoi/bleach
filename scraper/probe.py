@@ -83,6 +83,33 @@ def probe_rendered(url: str) -> None:
         browser.close()
 
 
+def probe_cards_detail(url: str, selector: str, n: int = 6) -> None:
+    """카드 몇 개의 전체 HTML을 그대로 출력 — 앞·중간·끝에서 골라서 서로 다른 종류가 섞이는지 본다."""
+    from playwright.sync_api import sync_playwright
+
+    print(f"\n===== [카드 전체 HTML] {url} ({selector})")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(user_agent=HEADERS["User-Agent"])
+        page.goto(url, wait_until="networkidle", timeout=45000)
+        for _ in range(4):
+            page.mouse.wheel(0, 8000)
+            page.wait_for_timeout(1500)
+        cards = page.locator(selector)
+        total = cards.count()
+        print(f"  카드 {total}개. 인덱스 {[0, total // 4, total // 2, 3 * total // 4, total - 1]} 출력")
+        for i in [0, total // 4, total // 2, 3 * total // 4, total - 1][:n]:
+            html = re.sub(r"\s+", " ", cards.nth(i).inner_html())
+            print(f"\n  --- 카드 #{i} ---\n  {html[:3500]}")
+        # 사이트가 제공하는 분류/채널 탭(링크 텍스트와 주소)
+        tabs = page.eval_on_selector_all(
+            "a[href*='ct='], a[href*='type='], a[href*='ctype='], [data-ct], [data-type]",
+            "els => els.map(e => (e.innerText||'').trim() + ' -> ' + (e.getAttribute('href')||e.dataset.ct||e.dataset.type||''))",
+        )
+        print("\n  분류/채널 탭 후보:", sorted(set(t for t in tabs if t.strip(" ->")))[:40])
+        browser.close()
+
+
 def probe_robots(url: str) -> None:
     root = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
     try:
@@ -93,7 +120,11 @@ def probe_robots(url: str) -> None:
 
 
 if __name__ == "__main__":
-    for target in sys.argv[1:]:
+    args = sys.argv[1:]
+    if args and args[0] == "--cards":  # python probe.py --cards <url> <css selector>
+        probe_cards_detail(args[1], args[2])
+        sys.exit(0)
+    for target in args:
         for fn in (probe_robots, probe_static, probe_rendered):
             try:
                 fn(target)
