@@ -1,0 +1,214 @@
+"""normalize.py 회귀 테스트 — 실제로 수집됐던 레뷰/파블로/리뷰노트 원본 값으로 검증.
+
+    cd scraper && python -m unittest discover -s tests
+"""
+
+import os
+import sys
+import unittest
+from datetime import date
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from normalize import normalize_all, normalize_campaign  # noqa: E402
+from regions import resolve_region  # noqa: E402
+
+TODAY = date(2026, 10, 28)
+
+
+def norm(raw):
+    return normalize_campaign(raw, today=TODAY)
+
+
+class RevuTest(unittest.TestCase):
+    def product(self, **kw):
+        base = {
+            "platform": "레뷰",
+            "title": "스타일 보온텀블러",
+            "region_raw": None,
+            "deadline_date": date(2026, 10, 28),
+            "source_url": "https://www.revu.net/campaign/1427250",
+            "category_raw": None,
+            "type_hint": "제품",
+            "description": "보온텀블러 1개",
+            "image_url": "https://files.weble.net/campaign/data/1427250/thumb200_x.jpg?bust=1",
+            "vendor": "라포레",
+            "recruit_count": 10,
+            "applicant_count": 545,
+        }
+        return {**base, **kw}
+
+    def test_product_is_delivery_without_region(self):
+        r = norm(self.product()).record
+        self.assertEqual(r["campaign_type"], "배송")
+        self.assertIsNone(r["region_sido"])
+        self.assertIsNone(r["region_gugun"])
+        self.assertEqual(r["category"], "생활")  # 텀블러
+        self.assertTrue(r["is_active"])  # 오늘 마감은 아직 유효
+
+    def test_food_product_goes_to_food_delivery_not_matjip(self):
+        r = norm(self.product(title="오리주물럭_릴스", description="오리주물럭 2팩")).record
+        self.assertEqual(r["category"], "식품·배송")
+
+    def test_beauty_product(self):
+        r = norm(self.product(title="엑토인7퍼센트3종세트_릴스", description="엑토인 크림 3종세트")).record
+        self.assertEqual(r["category"], "뷰티")
+
+    def test_region_page_bracket_resolves(self):
+        cases = {
+            "수원": ("경기", "수원시"),
+            "일산": ("경기", "고양시"),
+            "코엑스": ("서울", "강남구"),
+            "인천": ("인천", None),
+        }
+        for bracket, expected in cases.items():
+            r = norm(self.product(type_hint="지역", region_raw=bracket, vendor=None)).record
+            self.assertEqual(r["campaign_type"], "방문", bracket)
+            self.assertEqual((r["region_sido"], r["region_gugun"]), expected, bracket)
+
+    def test_expo_ticket_is_culture(self):
+        r = norm(
+            self.product(type_hint="지역", region_raw="코엑스", title="푸드위크 코리아 오뚜기부스", description="입장권 2매")
+        ).record
+        self.assertEqual(r["category"], "문화·여가")
+
+    def test_short_keywords_do_not_false_match(self):
+        # "박람회 " 가 '회'(횟집), "알마슬립"이 '립'(뷰티)에 걸리던 문제
+        r = norm(
+            self.product(type_hint="지역", region_raw="일산", title="2026고양가구박람회 알마슬립", description="레뷰포인트")
+        ).record
+        self.assertEqual(r["category"], "문화·여가")
+
+    def test_expired(self):
+        res = norm(self.product(deadline_date=date(2026, 10, 27)))
+        self.assertFalse(res.record["is_active"])
+        self.assertIn("expired", res.issues)
+
+
+class ReviewnoteTest(unittest.TestCase):
+    RAW = {
+        "platform": "리뷰노트",
+        "title": "서울 코엑스 글로벌 베이비페어",
+        "region_sido": "서울",
+        "region_gugun": "강남구",
+        "deadline_date": "2026-11-13T14:59:59.999Z",
+        "source_url": "https://www.reviewnote.co.kr/campaigns/1507714",
+        "category_raw": "기타",
+        "type_hint": "VISIT",
+        "description": "드림상품권 5만원 (별도 상세 안내 예정)",
+        "image_url": "https://img.reviewnote.cloud/x.jpg",
+        "vendor": None,
+        "recruit_count": 10,
+        "applicant_count": 84,
+    }
+
+    def test_deadline_converted_to_kst(self):
+        r = norm(self.RAW).record
+        self.assertEqual(r["deadline_date"], date(2026, 11, 13))
+        # UTC 자정 직전 마감 = KST 다음날 아침 → KST 날짜를 써야 한다
+        r2 = norm({**self.RAW, "deadline_date": "2026-11-13T15:30:00Z"}).record
+        self.assertEqual(r2["deadline_date"], date(2026, 11, 14))
+
+    def test_generic_category_inferred(self):
+        r = norm(self.RAW).record
+        self.assertEqual(r["category_raw"], "기타")
+        self.assertIn(r["category"], ("문화·여가", "생활"))
+        self.assertEqual(r["campaign_type"], "방문")
+        self.assertEqual((r["region_sido"], r["region_gugun"]), ("서울", "강남구"))
+
+    def test_long_sido_name_normalized(self):
+        r = norm({**self.RAW, "region_sido": "경기도", "region_gugun": "수원시"}).record
+        self.assertEqual(r["region_sido"], "경기")
+
+    def test_delivery_drops_region(self):
+        r = norm({**self.RAW, "type_hint": "DELIVERY", "title": "유기농 샐러드 정기배송"}).record
+        self.assertEqual(r["campaign_type"], "배송")
+        self.assertIsNone(r["region_sido"])
+        self.assertEqual(r["category"], "식품·배송")
+
+    def test_string_counts(self):
+        r = norm({**self.RAW, "recruit_count": "5", "applicant_count": "1,678"}).record
+        self.assertEqual((r["recruit_count"], r["applicant_count"]), (5, 1678))
+
+
+class PavlovuTest(unittest.TestCase):
+    RAW = {
+        "platform": "파블로",
+        "title": "[용산] 한우 오마카세",
+        "region_raw": "용산/중구",
+        "deadline_date": None,
+        "deadline_days_left": 4,
+        "source_url": "https://pavlovu.com/review_campaign.php?cp_id=1",
+        "category_raw": "맛집",
+        "description": "불고기 2인분+설렁탕 1그릇 (3.5만원 상당)",
+        "image_url": "/data/campaign/1.jpg",
+        "vendor": "OO식당",
+        "recruit_count": 10,
+        "applicant_count": 3,
+    }
+
+    def test_visit_campaign(self):
+        res = norm(self.RAW)
+        r = res.record
+        self.assertEqual(r["title"], "한우 오마카세")  # [괄호] 프리픽스 제거
+        self.assertEqual((r["region_sido"], r["region_gugun"]), ("서울", "용산구/중구"))
+        self.assertEqual(r["deadline_date"], date(2026, 11, 1))  # D-4 fallback
+        self.assertEqual(r["category"], "맛집")
+        self.assertEqual(r["campaign_type"], "방문")
+        self.assertIsNone(r["image_url"])  # 상대경로는 스크래퍼가 절대경로로 바꿔야 함
+        self.assertIn("no_image", res.issues)
+
+    def test_cafe_refines_matjip(self):
+        r = norm({**self.RAW, "title": "성수 베이커리 카페", "region_raw": "성수"}).record
+        self.assertEqual(r["category"], "카페·디저트")
+        self.assertEqual(r["region_sido"], "서울")
+
+    def test_delivery_label_in_region(self):
+        r = norm({**self.RAW, "region_raw": "배송", "category_raw": "뷰티", "title": "수분 크림"}).record
+        self.assertEqual(r["campaign_type"], "배송")
+        self.assertIsNone(r["region_gugun"])
+        self.assertEqual(r["category"], "뷰티")
+
+
+class GenericTest(unittest.TestCase):
+    def test_missing_required_dropped(self):
+        records, report = normalize_all([{"platform": "파블로", "title": " ", "source_url": "x"}], today=TODAY)
+        self.assertEqual(records, [])
+        self.assertIn("missing_required", report[0][1])
+
+    def test_dedup_by_source_url(self):
+        raw = {"platform": "레뷰", "title": "a", "source_url": "u", "type_hint": "제품"}
+        records, _ = normalize_all([raw, {**raw, "title": "b"}], today=TODAY)
+        self.assertEqual([r["title"] for r in records], ["b"])
+
+    def test_bad_values(self):
+        r = norm(
+            {
+                "platform": "레뷰",
+                "title": "  여러   칸   공백  ",
+                "source_url": "u",
+                "recruit_count": 0,
+                "applicant_count": -3,
+                "image_url": "https://x.com/img/noimage.png",
+                "deadline_date": date(2030, 1, 1),
+            }
+        ).record
+        self.assertEqual(r["title"], "여러 칸 공백")
+        self.assertIsNone(r["recruit_count"])
+        self.assertIsNone(r["applicant_count"])
+        self.assertIsNone(r["image_url"])
+        self.assertIsNone(r["deadline_date"])
+
+    def test_http_image_upgraded(self):
+        r = norm({"platform": "파블로", "title": "t", "source_url": "u", "image_url": "//pavlovu.com/a.jpg"}).record
+        self.assertEqual(r["image_url"], "https://pavlovu.com/a.jpg")
+
+    def test_regions(self):
+        self.assertEqual(resolve_region("중구"), (None, "중구"))  # 여러 시/도에 있음 → 모호
+        self.assertEqual(resolve_region("서울 중구"), ("서울", "중구"))
+        self.assertEqual(resolve_region("서울특별시 마포구"), ("서울", "마포구"))
+        self.assertEqual(resolve_region("배송"), (None, None))
+
+
+if __name__ == "__main__":
+    unittest.main()

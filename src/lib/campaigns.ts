@@ -1,3 +1,4 @@
+import { CATEGORIES } from "@/lib/categories";
 import { supabase } from "@/lib/supabase";
 
 export interface Campaign {
@@ -10,6 +11,8 @@ export interface Campaign {
   announce_date: string | null;
   source_url: string;
   category: string | null;
+  /** 방문 / 배송 / 기자단 / 기타 — scraper/normalize.py가 채운다 */
+  campaign_type: string | null;
   description: string | null;
   image_url: string | null;
   vendor: string | null;
@@ -38,7 +41,7 @@ export interface CampaignFilters {
 export const PLATFORMS = ["레뷰", "파블로", "리뷰노트"] as const;
 
 const SELECT_COLUMNS =
-  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, description, image_url, vendor, recruit_count, applicant_count, created_at";
+  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, campaign_type, description, image_url, vendor, recruit_count, applicant_count, created_at";
 
 export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Campaign[]> {
   // 지역/카테고리/업체/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
@@ -97,7 +100,13 @@ export async function fetchFilterOptions(): Promise<{
     if (row.region_sido) sidos.add(row.region_sido);
     if (row.category) categories.add(row.category);
   }
-  return { sidos: [...sidos].sort(), categories: [...categories].sort() };
+  // 카테고리는 스크래퍼가 표준 8종 라벨로 정규화해 두므로 categories.ts의 정의 순서대로 노출한다.
+  const order = CATEGORIES.map((c) => c.label);
+  const rank = (label: string) => (order.indexOf(label) === -1 ? order.length : order.indexOf(label));
+  return {
+    sidos: [...sidos].sort(),
+    categories: [...categories].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
+  };
 }
 
 /** 지원률 = 현재 신청(대기)인원 / 전체 모집인원. 둘 중 하나라도 없으면 null. */

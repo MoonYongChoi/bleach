@@ -1,4 +1,4 @@
-"""스크래핑 결과를 Supabase(Postgres) campaigns 테이블에 upsert."""
+"""정제된(normalize.py) 캠페인 레코드를 Supabase(Postgres) campaigns 테이블에 upsert."""
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
 UPSERT_SQL = """
 insert into public.campaigns
     (platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category,
-     description, image_url, vendor, recruit_count, applicant_count)
+     category_raw, campaign_type, description, image_url, vendor, recruit_count, applicant_count,
+     is_active)
 values
     (%(platform)s, %(title)s, %(region_sido)s, %(region_gugun)s, %(deadline_date)s,
-     %(announce_date)s, %(source_url)s, %(category)s, %(description)s, %(image_url)s,
-     %(vendor)s, %(recruit_count)s, %(applicant_count)s)
+     %(announce_date)s, %(source_url)s, %(category)s, %(category_raw)s, %(campaign_type)s,
+     %(description)s, %(image_url)s, %(vendor)s, %(recruit_count)s, %(applicant_count)s,
+     %(is_active)s)
 on conflict (source_url) do update set
     title = excluded.title,
     region_sido = excluded.region_sido,
@@ -25,15 +27,28 @@ on conflict (source_url) do update set
     deadline_date = excluded.deadline_date,
     announce_date = excluded.announce_date,
     category = excluded.category,
+    category_raw = excluded.category_raw,
+    campaign_type = excluded.campaign_type,
     description = excluded.description,
     image_url = excluded.image_url,
     vendor = excluded.vendor,
     recruit_count = excluded.recruit_count,
     applicant_count = excluded.applicant_count,
-    is_active = true;
+    is_active = excluded.is_active;
+"""
+
+# 이번 수집에서 다시 보이지 않았더라도 마감일이 지난 건 내린다 (KST 기준 오늘 이전).
+EXPIRE_SQL = """
+update public.campaigns
+set is_active = false
+where is_active
+  and deadline_date < (now() at time zone 'Asia/Seoul')::date;
 """
 
 _DEFAULTS = {
+    "category_raw": None,
+    "campaign_type": None,
+    "is_active": True,
     "description": None,
     "image_url": None,
     "vendor": None,
@@ -41,21 +56,29 @@ _DEFAULTS = {
     "applicant_count": None,
 }
 
+_COLUMNS = {
+    "platform", "title", "region_sido", "region_gugun", "deadline_date", "announce_date",
+    "source_url", "category", "category_raw", "campaign_type", "description", "image_url",
+    "vendor", "recruit_count", "applicant_count", "is_active",
+}
 
-def upsert_campaigns(campaigns: list[dict]) -> int:
+
+def upsert_campaigns(campaigns: list[dict]) -> tuple[int, int]:
+    """(upsert 건수, 마감 지나 비활성화된 건수)."""
     rows = [
-        {**_DEFAULTS, **c}
+        {**_DEFAULTS, **{k: v for k, v in c.items() if k in _COLUMNS}}
         for c in campaigns
         if c.get("source_url") and c.get("title")
     ]
-    if not rows:
-        return 0
 
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     try:
         with conn, conn.cursor() as cur:
-            psycopg2.extras.execute_batch(cur, UPSERT_SQL, rows, page_size=100)
-        return len(rows)
+            if rows:
+                psycopg2.extras.execute_batch(cur, UPSERT_SQL, rows, page_size=100)
+            cur.execute(EXPIRE_SQL)
+            expired = cur.rowcount
+        return len(rows), expired
     finally:
         conn.close()
 
@@ -73,5 +96,5 @@ if __name__ == "__main__":
             "category": None,
         }
     ]
-    n = upsert_campaigns(sample)
-    print(f"upsert {n}건 완료")
+    n, expired = upsert_campaigns(sample)
+    print(f"upsert {n}건 완료, 비활성화 {expired}건")

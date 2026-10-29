@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-NON_GEO_LABELS = {"배송", "기자단", "실시간", "누구나", "전국"}
+# 지역이 아니라 캠페인 유형을 뜻하는 라벨 — 지역 칸에 넣지 않고 campaign_type으로 보낸다.
+NON_GEO_LABELS = {"배송", "기자단", "실시간", "누구나", "전국", "재택", "구매평"}
 
 # 시/군/구 이름 -> 시/도 후보 목록 (DB에 이미 쓰이고 있는 짧은 표기와 맞춤).
 # "중구", "강서구"처럼 여러 시/도에 동명 구/군이 있어 리스트로 둔다 — 같이 온 다른
@@ -59,39 +60,129 @@ SIDO_NAMES = {
     "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
 }
 
+# 공식/긴 표기 -> DB에서 쓰는 두 글자 표기
+SIDO_ALIASES = {
+    "서울특별시": "서울", "서울시": "서울",
+    "부산광역시": "부산", "부산시": "부산",
+    "대구광역시": "대구", "대구시": "대구",
+    "인천광역시": "인천", "인천시": "인천",
+    "광주광역시": "광주",
+    "대전광역시": "대전", "대전시": "대전",
+    "울산광역시": "울산", "울산시": "울산",
+    "세종특별자치시": "세종", "세종시": "세종",
+    "경기도": "경기",
+    "강원도": "강원", "강원특별자치도": "강원",
+    "충청북도": "충북", "충청남도": "충남",
+    "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
+    "경상북도": "경북", "경상남도": "경남",
+    "제주도": "제주", "제주특별자치도": "제주",
+}
+
+# 행정구역명이 아닌 생활권/랜드마크 지명 -> (시/도, 시/군/구).
+# 레뷰 "[일산] ...", "[코엑스] ..." 처럼 제목 괄호에 자주 나오는 것 위주.
+AREA_ALIASES: dict[str, tuple[str, str]] = {
+    "일산": ("경기", "고양시"), "분당": ("경기", "성남시"), "판교": ("경기", "성남시"),
+    "동탄": ("경기", "화성시"), "광교": ("경기", "수원시"), "영통": ("경기", "수원시"),
+    "평촌": ("경기", "안양시"), "산본": ("경기", "군포시"), "위례": ("경기", "성남시"),
+    "송도": ("인천", "연수구"), "청라": ("인천", "서구"), "영종도": ("인천", "중구"),
+    "강남역": ("서울", "강남구"), "코엑스": ("서울", "강남구"), "삼성역": ("서울", "강남구"),
+    "압구정": ("서울", "강남구"), "신사": ("서울", "강남구"), "청담": ("서울", "강남구"),
+    "홍대": ("서울", "마포구"), "연남": ("서울", "마포구"), "합정": ("서울", "마포구"),
+    "망원": ("서울", "마포구"), "성수": ("서울", "성동구"), "잠실": ("서울", "송파구"),
+    "여의도": ("서울", "영등포구"), "이태원": ("서울", "용산구"), "한남": ("서울", "용산구"),
+    "명동": ("서울", "중구"), "을지로": ("서울", "중구"), "건대": ("서울", "광진구"),
+    "신촌": ("서울", "서대문구"), "종로": ("서울", "종로구"), "익선동": ("서울", "종로구"),
+    "목동": ("서울", "양천구"), "마곡": ("서울", "강서구"),
+    "서면": ("부산", "부산진구"), "광안리": ("부산", "수영구"), "센텀": ("부산", "해운대구"),
+    "동성로": ("대구", "중구"),
+}
+
+# 앞뒤에 붙어 매칭을 방해하는 장식 문자열
+_REGION_NOISE = ("점", "역", "근처", "인근")
+
+
+def normalize_sido(raw: str | None) -> str | None:
+    """'서울특별시'/'경기도' 같은 표기를 'SIDO_NAMES'의 두 글자 표기로 맞춘다."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    if raw in SIDO_NAMES:
+        return raw
+    return SIDO_ALIASES.get(raw)
+
+
+def is_non_geo(raw: str | None) -> bool:
+    return bool(raw) and raw.strip() in NON_GEO_LABELS
+
+
+def _canonical_gugun(token: str) -> tuple[str, list[str]] | None:
+    """'용산' -> ('용산구', ['서울']). 접미사가 생략된 표기도 받아준다."""
+    for candidate in (token, f"{token}구", f"{token}시", f"{token}군"):
+        sidos = GU_SI_TO_SIDO.get(candidate)
+        if sidos:
+            return candidate, sidos
+    return None
+
 
 def resolve_region(raw: str | None) -> tuple[str | None, str | None]:
-    """원본 지역 텍스트 -> (region_sido, region_gugun)."""
+    """원본 지역 텍스트 -> (region_sido, region_gugun).
+
+    해석에 성공하면 gugun은 '용산구', '수원시'처럼 표준 표기로 돌려주고(여러 개면 '/'로 연결),
+    해석이 안 되면 원본 텍스트를 gugun에 남겨서 정보가 사라지지 않게 한다.
+    지역이 아닌 라벨('배송', '기자단' 등)은 (None, None)을 돌려준다 — 유형은 campaign_type이 담당.
+    """
     if not raw:
         return None, None
     raw = raw.strip()
-    if not raw:
+    if not raw or raw in NON_GEO_LABELS:
         return None, None
 
-    if raw in NON_GEO_LABELS:
-        return None, raw
+    sido = normalize_sido(raw)
+    if sido:
+        return sido, None
 
-    if raw in SIDO_NAMES:
-        return raw, None
+    if raw in AREA_ALIASES:
+        return AREA_ALIASES[raw]
 
-    # 파블로 등은 "용산", "의정부"처럼 구/시/군 접미사를 생략해서 준다.
-    tokens = [t.strip() for t in raw.replace("·", "/").split("/") if t.strip()]
+    # "서울 강남구", "용산/중구", "경기 · 수원" 등
+    tokens = [t for t in raw.replace("·", " ").replace("/", " ").replace(",", " ").split() if t]
+    explicit_sido: str | None = None
+    guguns: list[str] = []
     candidate_sets: list[set[str]] = []
+    unresolved = False
     for token in tokens:
-        for candidate in (token, f"{token}구", f"{token}시", f"{token}군"):
-            sidos = GU_SI_TO_SIDO.get(candidate)
-            if sidos:
-                candidate_sets.append(set(sidos))
-                break
+        s = normalize_sido(token)
+        if s:
+            explicit_sido = s
+            continue
+        if token in AREA_ALIASES:
+            a_sido, a_gugun = AREA_ALIASES[token]
+            guguns.append(a_gugun)
+            candidate_sets.append({a_sido})
+            continue
+        hit = _canonical_gugun(token)
+        if not hit:
+            stripped = token
+            for suffix in _REGION_NOISE:
+                if stripped.endswith(suffix) and len(stripped) > len(suffix) + 1:
+                    stripped = stripped[: -len(suffix)]
+            hit = _canonical_gugun(stripped) if stripped != token else None
+        if hit:
+            guguns.append(hit[0])
+            candidate_sets.append(set(hit[1]))
+        else:
+            unresolved = True
+
+    gugun = "/".join(dict.fromkeys(guguns)) if guguns and not unresolved else raw
+    if explicit_sido:
+        return explicit_sido, (gugun if guguns or unresolved else None)
 
     if candidate_sets:
         # 여러 토큰이 공통으로 속하는 시/도가 있으면 그걸로 모호함을 해소한다.
-        intersection = candidate_sets[0]
-        for s in candidate_sets[1:]:
-            intersection &= s
+        intersection = set.intersection(*candidate_sets)
         if len(intersection) == 1:
-            return next(iter(intersection)), raw
+            return next(iter(intersection)), gugun
         if len(candidate_sets[0]) == 1:
-            return next(iter(candidate_sets[0])), raw
+            return next(iter(candidate_sets[0])), gugun
 
-    return None, raw
+    return None, gugun

@@ -25,6 +25,9 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
+      - name: Test normalization rules
+        run: python -m unittest discover -s tests
+
       - name: Run scrapers and load into Supabase
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

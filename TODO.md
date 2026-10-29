@@ -40,6 +40,9 @@
 - [x] Supabase에 upsert하는 적재 스크립트 작성 — `scraper/loader.py` (`source_url` 기준 ON CONFLICT)
 - [x] GitHub Actions 워크플로 작성 — `.github/workflows/scrape.yml` (하루 4회: 09:30/15:30/21:30/03:30 KST)
   - [ ] GitHub repo secrets 등록 필요: `DATABASE_URL`, `REVU_ID`, `REVU_PW`
+- [x] 플랫폼별 데이터 정제 레이어 — `scraper/normalize.py` (제목/마감일(KST)/인원/이미지/표준 8종 분류/지역/유형) + `scraper/tests/`
+  - [x] 품질 리포트: `python run_all.py --dry-run`(수집 직후), `python quality.py`(DB)
+  - [ ] `supabase/migrations/20261029_normalize_fields.sql` 실행 (category_raw, campaign_type 컬럼)
 - [ ] 크롤링 실패/차단 대응 로직(재시도, 로그) 보강 — 현재는 플랫폼별 try/except로 한 곳 실패해도 나머지는 계속 진행하는 수준
 
 ### Day 4~5: 모바일 UI 컴포넌트 제작

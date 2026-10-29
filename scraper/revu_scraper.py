@@ -32,7 +32,7 @@ from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright
 
-from regions import resolve_region
+from normalize import today_kst
 
 BASE_URL = "https://www.revu.net"
 CATEGORIES = ["제품", "지역"]
@@ -60,15 +60,21 @@ def _login(context) -> bool:
     return logged_in
 
 
+CLOSED_MARKERS = ("모집마감", "마감완료", "모집완료", "발표완료")
+
+
+def _is_closed(status_text: str) -> bool:
+    return any(marker in status_text for marker in CLOSED_MARKERS)
+
+
 def _parse_deadline(status_text: str) -> Optional[date]:
     status_text = status_text.strip()
-    if "모집마감" in status_text or "마감완료" in status_text:
-        return None  # 종료된 캠페인은 수집하지 않음
+    today = today_kst()  # Actions는 UTC라 03:30 KST 실행분에서 하루 밀리지 않게
     m = DAYS_LEFT_RE.search(status_text)
     if m:
-        return date.today() + timedelta(days=int(m.group(1)))
+        return today + timedelta(days=int(m.group(1)))
     if "마감" in status_text:  # "마감 임박" 등 정확한 일수 없음 → 오늘로 간주
-        return date.today()
+        return today
     return None
 
 
@@ -112,6 +118,9 @@ def fetch_campaigns() -> list[dict]:
                     continue
                 seen_ids.add(cid)
 
+                if _is_closed(card["status"]):
+                    continue  # 종료된 캠페인은 수집하지 않음
+
                 deadline_date = _parse_deadline(card["status"])
 
                 title = card["title"]
@@ -123,12 +132,8 @@ def fetch_campaigns() -> list[dict]:
                         title = title[bm.end():].strip() or title
 
                 # /category/지역의 괄호는 지역명, /category/제품의 괄호는 업체명이다.
-                if category == "지역":
-                    region_sido, region_gugun = resolve_region(bracket)
-                    vendor = None
-                else:
-                    region_sido, region_gugun = None, None
-                    vendor = bracket
+                region_raw = bracket if category == "지역" else None
+                vendor = bracket if category == "제품" else None
 
                 applicant_count = recruit_count = None
                 am = APPLICANT_RE.search(card["text"])
@@ -142,12 +147,13 @@ def fetch_campaigns() -> list[dict]:
                     {
                         "platform": "레뷰",
                         "title": title,
-                        "region_sido": region_sido,
-                        "region_gugun": region_gugun,
+                        "region_raw": region_raw,
                         "deadline_date": deadline_date,
                         "announce_date": None,
                         "source_url": f"{BASE_URL}/campaign/{cid}",
-                        "category": category,
+                        # "제품"/"지역"은 페이지 이름일 뿐이라 분류는 normalize가 제목으로 추론한다.
+                        "category_raw": None,
+                        "type_hint": category,
                         "description": card["desc"],
                         "image_url": image_url,
                         "vendor": vendor,

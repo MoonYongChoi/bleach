@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 
@@ -32,21 +32,12 @@ FIREBASE_IMAGE_URL = (
 def _image_url(image_key: Optional[str]) -> Optional[str]:
     if not image_key:
         return None
-    encoded_key = image_key.replace("/", "%2F")
-    return IMAGE_CDN + FIREBASE_IMAGE_URL.format(key=encoded_key)
+    # Firebase Storage는 객체 키 전체를 percent-encoding 해야 한다 ('/', 공백, 한글 등).
+    return IMAGE_CDN + FIREBASE_IMAGE_URL.format(key=quote(image_key, safe=""))
 
 NEXT_DATA_RE = re.compile(
     r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S
 )
-
-
-def _parse_iso_date(value: Optional[str]):
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
-    except ValueError:
-        return None
 
 
 def fetch_campaigns() -> list[dict]:
@@ -66,23 +57,26 @@ def fetch_campaigns() -> list[dict]:
         if cid is None:
             continue
 
+        # 제목과 제공내역(offer)은 따로 저장한다 — 예전엔 "제목 - 제공내역"으로 합쳐서
+        # 카드 제목이 길어지고 description과 중복됐다.
         title = (obj.get("title") or "").strip()
         offer = (obj.get("offer") or "").strip()
-        if offer:
-            title = f"{title} - {offer}" if title else offer
 
+        # 필드명이 헷갈리게 되어 있다: city = 시/도("서울"), sido.name = 시/군/구("강남구")
         sido = obj.get("sido") or {}
 
         campaigns.append(
             {
                 "platform": "리뷰노트",
-                "title": title or None,
+                "title": title or offer or None,
                 "region_sido": obj.get("city"),
                 "region_gugun": sido.get("name"),
-                "deadline_date": _parse_iso_date(obj.get("applyEndAt")),
+                # ISO(UTC) 문자열 그대로 넘기면 normalize가 KST 날짜로 바꾼다.
+                "deadline_date": obj.get("applyEndAt"),
                 "announce_date": None,
                 "source_url": DETAIL_URL.format(id=cid),
-                "category": (obj.get("category") or {}).get("title"),
+                "category_raw": (obj.get("category") or {}).get("title"),
+                "type_hint": obj.get("sort"),
                 "description": offer or None,
                 "image_url": _image_url(obj.get("imageKey")),
                 "vendor": None,

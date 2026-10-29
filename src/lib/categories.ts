@@ -29,8 +29,9 @@ export const CATEGORIES: Category[] = [
   { slug: "culture_leisure", label: "문화·여가", tint: "#F1EAFB", icon: "#6D4FA0" },
 ];
 
-// 각 플랫폼에서 수집한 원본 카테고리 텍스트 → 표준 슬러그 매핑.
-// 스크래퍼가 campaigns.category 컬럼에 적재하기 전에 이 테이블로 정규화한다.
+// 각 플랫폼에서 수집한 원본 카테고리 텍스트 → 표준 슬러그 매핑 (참고용).
+// 실제 정규화는 scraper/normalize.py(CATEGORY_ALIASES + 키워드 추론)가 적재 전에 하고,
+// campaigns.category에는 위 CATEGORIES의 label이 저장된다 — 라벨을 바꾸면 양쪽을 같이 고칠 것.
 export const CATEGORY_ALIASES: Record<string, CategorySlug> = {
   // 레뷰
   "맛집": "matjip",

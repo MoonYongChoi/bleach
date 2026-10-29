@@ -21,7 +21,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from regions import resolve_region
+from normalize import today_kst
 
 BASE_URL = "https://pavlovu.com"
 LIST_URL = f"{BASE_URL}/review_campaign_list.php"
@@ -57,7 +57,7 @@ def _parse_detail(cp_id: str) -> _Detail:
     m = re.search(r"신청기간\s*(\d{1,2})\.(\d{1,2})\([^)]+\)\s*~\s*(\d{1,2})\.(\d{1,2})\(", resp.text)
     if m:
         end_month, end_day = int(m.group(3)), int(m.group(4))
-        today = date.today()
+        today = today_kst()
         year = today.year
         # 연말/연초 경계: 종료월이 현재월보다 많이 작으면 다음 해로 간주
         if end_month < today.month - 6:
@@ -117,6 +117,16 @@ def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> lis
             title = title_el.get_text(strip=True) if title_el else None
             store_el = link.select_one(".pvc_store")
             vendor = store_el.get_text(strip=True) if store_el else None
+            # 상세페이지 요청이 실패했을 때 쓸 목록의 "D-4" / "D-day"
+            dday_el = link.select_one(".pvc_deadline")
+            days_left = None
+            if dday_el:
+                dday_text = dday_el.get_text(strip=True)
+                dm = re.search(r"D-(\d+)", dday_text)
+                if dm:
+                    days_left = int(dm.group(1))
+                elif "day" in dday_text.lower() or "오늘" in dday_text:
+                    days_left = 0
 
             region_cat = link.select_one(".pvc_pn")
             region_raw, category = None, None
@@ -124,10 +134,13 @@ def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> lis
                 parts = region_cat.get_text(strip=True).split("·")
                 region_raw = parts[0].strip() if len(parts) > 0 else None
                 category = parts[1].strip() if len(parts) > 1 else None
-            region_sido, region_gugun = resolve_region(region_raw)
 
+            # lazy-load 이미지는 src에 플레이스홀더가 있고 실제 주소는 data-src 쪽에 있다.
             image_el = card.select_one(".pvc_im img")
-            image_url = urljoin(BASE_URL, image_el["src"]) if image_el and image_el.get("src") else None
+            image_src = None
+            if image_el:
+                image_src = image_el.get("data-src") or image_el.get("data-original") or image_el.get("src")
+            image_url = urljoin(BASE_URL, image_src) if image_src else None
 
             detail = _parse_detail(cp_id) if with_exact_deadline else _Detail()
 
@@ -135,12 +148,12 @@ def fetch_campaigns(max_pages: int = 5, with_exact_deadline: bool = True) -> lis
                 {
                     "platform": "파블로",
                     "title": title,
-                    "region_sido": region_sido,
-                    "region_gugun": region_gugun,
+                    "region_raw": region_raw,
                     "deadline_date": detail.deadline_date,
+                    "deadline_days_left": days_left,
                     "announce_date": None,
                     "source_url": source_url,
-                    "category": category,
+                    "category_raw": category,
                     "description": detail.description,
                     "image_url": image_url,
                     "vendor": vendor,

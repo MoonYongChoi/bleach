@@ -21,7 +21,12 @@ function DdayLabel({ deadlineDate }: { deadlineDate: string | null }) {
 }
 
 export function CampaignCard({ campaign }: { campaign: Campaign }) {
-  const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
+  // 배송형/기자단은 지역이 없으므로 대신 유형을 보여준다.
+  const region =
+    [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ") ||
+    (campaign.campaign_type && campaign.campaign_type !== "방문" && campaign.campaign_type !== "기타"
+      ? `${campaign.campaign_type}형`
+      : "");
   const metaParts = [
     region || null,
     campaign.deadline_date ? `~${campaign.deadline_date.slice(5).replace("-", ".")} 모집` : null,

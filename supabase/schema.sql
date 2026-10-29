@@ -21,7 +21,12 @@ create table if not exists public.campaigns (
   -- 5. 원문 URL (Outlink) — 중복 수집 방지를 위한 unique 키
   source_url text not null unique,
 
+  -- 표준 분류 8종 (scraper/normalize.py STANDARD_CATEGORIES = src/lib/categories.ts 라벨)
   category text,
+  -- 플랫폼 원본 분류 텍스트 (디버깅/재분류용)
+  category_raw text,
+  -- 캠페인 유형: 방문 / 배송 / 기자단 / 기타 (배송형은 지역 없음)
+  campaign_type text,
 
   -- 6. 제공내역(체험단 상세 혜택 설명) / 목록 썸네일
   description text,
@@ -42,6 +47,7 @@ create index if not exists campaigns_deadline_idx on public.campaigns (deadline_
 create index if not exists campaigns_region_idx on public.campaigns (region_sido, region_gugun);
 create index if not exists campaigns_category_idx on public.campaigns (category);
 create index if not exists campaigns_platform_idx on public.campaigns (platform);
+create index if not exists campaigns_type_idx on public.campaigns (campaign_type);
 
 -- RLS: 프론트(anon key)는 읽기만, 쓰기는 service_role(크롤러)만
 alter table public.campaigns enable row level security;
