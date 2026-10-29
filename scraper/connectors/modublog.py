@@ -25,7 +25,8 @@ BASE_URL = "https://www.modublog.co.kr"
 LIST_URL = f"{BASE_URL}/product"
 
 RECRUIT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*([\d,]+)")
-DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*남음")
+DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*남음|D\s*-\s*(\d+)", re.I)
+TODAY_WORDS = ("오늘", "D-day", "D-DAY", "마감임박", "금일")
 THUMB_CATEGORY_RE = re.compile(r"/list_thumb/([a-z_]+)/")
 
 CARD_JS = """els => els.map(el => ({
@@ -45,10 +46,11 @@ def to_raw(card: dict) -> RawCampaign | None:
         return None
     title, brackets = split_title_brackets(card["title"])
     rm = RECRUIT_RE.search(card.get("recruit") or "")
-    dm = DAYS_LEFT_RE.search(card.get("deadline") or "")
+    deadline_text = card.get("deadline") or ""
+    dm = DAYS_LEFT_RE.search(deadline_text)
     if dm:
-        days_left = int(dm.group(1))
-    elif "오늘" in (card.get("deadline") or ""):
+        days_left = int(dm.group(1) or dm.group(2))
+    elif any(w in deadline_text for w in TODAY_WORDS):
         days_left = 0
     else:
         days_left = None
@@ -103,6 +105,13 @@ class ModublogConnector(Connector):
                     break
             cards = page.eval_on_selector_all("div.c_box", CARD_JS)
             browser.close()
+
+        unparsed = [c.get("deadline", "").strip() for c in cards if c.get("deadline") and not DAYS_LEFT_RE.search(c["deadline"])]
+        if unparsed:
+            print(f"[모두블로그] 마감 표기를 못 읽은 카드 {len(unparsed)}개, 예: {sorted(set(unparsed))[:8]}")
+        no_deadline = sum(1 for c in cards if not (c.get("deadline") or "").strip())
+        if no_deadline:
+            print(f"[모두블로그] 마감 표시가 아예 없는 카드 {no_deadline}개 (상시모집일 수 있음)")
 
         campaigns: list[RawCampaign] = []
         seen: set[str] = set()

@@ -23,7 +23,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-from connectors.base import Connector, RawCampaign, split_title_brackets
+from connectors.base import Connector, RawCampaign, get_with_retry, split_title_brackets
 
 BASE_URL = "https://www.seoulouba.co.kr"
 LIST_URL = f"{BASE_URL}/campaign/"
@@ -88,10 +88,13 @@ class SeouloubaConnector(Connector):
 
     def fetch(self) -> list[RawCampaign]:
         campaigns: list[RawCampaign] = []
+        session = requests.Session()
+        session.headers.update(HEADERS)
         for cat, category_type in CATEGORIES.items():
-            resp = requests.get(LIST_URL, params={"cat": cat}, headers=HEADERS, timeout=20)
-            resp.raise_for_status()
-            campaigns += parse_list(resp.text, category_type)
+            resp = get_with_retry(session, LIST_URL, params={"cat": cat})
+            found = parse_list(resp.text, category_type)
+            print(f"[서울오빠] cat={cat}({category_type}): {len(found)}건")
+            campaigns += found
             time.sleep(2)
         return campaigns
 

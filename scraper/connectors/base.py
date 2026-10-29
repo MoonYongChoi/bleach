@@ -83,6 +83,24 @@ def split_title_brackets(title: str) -> tuple[str, dict[str, list[str]]]:
     return rest.strip(), found
 
 
+def get_with_retry(session, url: str, *, method: str = "GET", tries: int = 3, **kwargs):
+    """접속 시간 초과가 간헐적으로 나는 사이트용 (GitHub 러너 IP에 따라 막히는 경우가 있다)."""
+    import time
+
+    import requests
+
+    kwargs.setdefault("timeout", 30)
+    for attempt in range(1, tries + 1):
+        try:
+            resp = session.request(method, url, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == tries:
+                raise
+            time.sleep(5 * attempt)
+
+
 class Connector:
     key: ClassVar[str]  # DB/코드에서 쓰는 불변 키 (예: "revu")
     label: ClassVar[str]  # 화면 표시 + 현재 campaigns.platform 값 (예: "레뷰")

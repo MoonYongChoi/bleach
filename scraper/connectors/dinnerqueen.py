@@ -23,7 +23,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from connectors.base import Connector, RawCampaign, split_title_brackets
+from connectors.base import Connector, RawCampaign, get_with_retry, split_title_brackets
 
 BASE_URL = "https://dinnerqueen.net"
 LIST_URL = f"{BASE_URL}/taste"
@@ -99,22 +99,28 @@ class DinnerqueenConnector(Connector):
 
     def fetch(self) -> list[RawCampaign]:
         params = {"ct": "전체"}
-        resp = requests.get(LIST_URL, params=params, headers=HEADERS, timeout=20)
-        resp.raise_for_status()
+        # 다음 페이지 요청은 첫 페이지에서 받은 세션 쿠키가 있어야 응답한다
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        resp = get_with_retry(session, LIST_URL, params=params)
         campaigns = parse_cards(resp.text)
         seen = {c.source_url for c in campaigns}
 
         for page in range(2, self.max_pages + 1):
             time.sleep(2)
-            more = requests.post(
-                MORE_URL,
-                params={**params, "area1": "전국", "area2": "전체", "page": page, "ctype": "", "query": ""},
-                headers={**HEADERS, "X-Requested-With": "XMLHttpRequest", "Referer": resp.url},
-                timeout=20,
-            )
-            if more.status_code != 200:
+            try:
+                more = get_with_retry(
+                    session,
+                    MORE_URL,
+                    method="POST",
+                    params={**params, "area1": "전국", "area2": "전체", "page": page, "ctype": "", "query": ""},
+                    headers={"X-Requested-With": "XMLHttpRequest", "Referer": resp.url},
+                )
+            except requests.RequestException as e:
+                print(f"[디너의여왕] {page}페이지 요청 실패: {e}")
                 break
             new = [c for c in parse_cards(more.text) if c.source_url not in seen]
+            print(f"[디너의여왕] {page}페이지: 응답 {len(more.text)}바이트, 새 카드 {len(new)}개")
             if not new:
                 break
             seen.update(c.source_url for c in new)
