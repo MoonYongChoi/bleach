@@ -83,12 +83,14 @@ export function ResultsBar({
   loading,
   value,
   onOpenSort,
+  onToggleOpenEnded,
   onReset,
 }: {
   total: number;
   loading: boolean;
   value: FilterState;
   onOpenSort: () => void;
+  onToggleOpenEnded: () => void;
   onReset: () => void;
 }) {
   const sortLabel = SORT_OPTIONS.find((o) => o.value === value.sort)?.label ?? "정렬";
@@ -111,6 +113,22 @@ export function ResultsBar({
           </button>
         )}
       </div>
+      <div className="flex shrink-0 items-center gap-1">
+      {value.sort === "deadline" && (
+        <button
+          role="switch"
+          aria-checked={value.includeOpenEnded}
+          onClick={onToggleOpenEnded}
+          className={cn(
+            "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+            value.includeOpenEnded
+              ? "border-border text-muted-foreground"
+              : "border-primary bg-primary/10 font-medium text-primary"
+          )}
+        >
+          {value.includeOpenEnded ? "상시모집 포함" : "상시모집 제외"}
+        </button>
+      )}
       <button
         onClick={onOpenSort}
         aria-label={`정렬: ${sortLabel}. 눌러서 바꾸기`}
@@ -119,6 +137,7 @@ export function ResultsBar({
         <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />
         {sortLabel}
       </button>
+      </div>
     </div>
   );
 }

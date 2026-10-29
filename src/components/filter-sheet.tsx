@@ -28,6 +28,8 @@ export interface FilterState {
   applyRate: ApplyRateRange | null;
   favoritesOnly: boolean;
   sort: SortOption;
+  /** 마감임박순일 때 상시모집(마감일 없음)도 보여줄지 */
+  includeOpenEnded: boolean;
 }
 
 export const EMPTY_FILTER_STATE: FilterState = {
@@ -40,6 +42,7 @@ export const EMPTY_FILTER_STATE: FilterState = {
   applyRate: null,
   favoritesOnly: false,
   sort: "deadline",
+  includeOpenEnded: true,
 };
 
 /** 정렬·관심 보기를 뺀 "걸러내는 조건" 개수 — 필터 버튼 배지에 쓴다. */
@@ -57,7 +60,7 @@ export function activeFilterCount(f: FilterState) {
 
 /** 시트 안의 "초기화"는 정렬과 관심 보기는 건드리지 않는다 — 시트에서 고른 것만 지운다. */
 function clearSheetFilters(f: FilterState): FilterState {
-  return { ...EMPTY_FILTER_STATE, sort: f.sort, favoritesOnly: f.favoritesOnly };
+  return { ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded, favoritesOnly: f.favoritesOnly };
 }
 
 // 지원률 슬라이더 범위: 0~200%. 오른쪽 끝(2)에 두면 "200% 이상"까지 무제한으로 연다.

@@ -34,6 +34,7 @@ function toQuery(search: string, f: FilterState, favoriteIds: string[]): Campaig
     applyRate: f.applyRate ?? undefined,
     ids: f.favoritesOnly ? favoriteIds : undefined,
     sort: f.sort,
+    includeOpenEnded: f.includeOpenEnded,
   };
 }
 
@@ -85,7 +86,7 @@ export default function Home() {
 
   function resetFilters() {
     setSearch("");
-    setFilters((f) => ({ ...EMPTY_FILTER_STATE, sort: f.sort }));
+    setFilters((f) => ({ ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded }));
   }
 
   const noFavoritesYet = filters.favoritesOnly && favorites.ids.length === 0;
@@ -105,6 +106,7 @@ export default function Home() {
           loading={loading}
           value={filters}
           onOpenSort={() => setSortOpen(true)}
+          onToggleOpenEnded={() => setFilters((f) => ({ ...f, includeOpenEnded: !f.includeOpenEnded }))}
           onReset={resetFilters}
         />
       </div>
@@ -159,6 +161,8 @@ export default function Home() {
         onOpenChange={setSortOpen}
         value={filters.sort}
         onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
+        includeOpenEnded={filters.includeOpenEnded}
+        onToggleOpenEnded={() => setFilters((f) => ({ ...f, includeOpenEnded: !f.includeOpenEnded }))}
       />
     </div>
   );

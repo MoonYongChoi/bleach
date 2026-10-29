@@ -52,6 +52,8 @@ export interface CampaignFilters {
   types?: string[];
   channels?: string[];
   applyRate?: ApplyRateRange;
+  /** false면 마감일 없는(상시모집) 체험단을 뺀다. 마감임박순에서만 쓰인다 */
+  includeOpenEnded?: boolean;
   /** 지정하면 이 id들만 (관심 목록 보기) */
   ids?: string[];
   sort?: SortOption;
@@ -112,6 +114,9 @@ export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Cam
   }
   if (filters.ids) {
     query = query.in("id", filters.ids);
+  }
+  if (filters.sort === "deadline" && filters.includeOpenEnded === false) {
+    query = query.not("deadline_date", "is", null);
   }
 
   switch (filters.sort) {
