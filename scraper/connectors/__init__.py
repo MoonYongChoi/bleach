@@ -8,13 +8,11 @@ from connectors.modublog import ModublogConnector
 from connectors.pavlovu import PavlovuConnector
 from connectors.reviewnote import ReviewnoteConnector
 from connectors.revu import RevuConnector
-from connectors.seoulouba import SeouloubaConnector
 
 REGISTRY: list[Connector] = [
     PavlovuConnector(),
     ReviewnoteConnector(),
     RevuConnector(),
-    SeouloubaConnector(),
     DinnerqueenConnector(),
     ModublogConnector(),
 ]

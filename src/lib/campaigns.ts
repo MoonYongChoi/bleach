@@ -60,7 +60,7 @@ export interface CampaignFilters {
 }
 
 /** 체험단 플랫폼 — scraper/connectors/__init__.py REGISTRY의 label과 같은 순서로 맞춘다. */
-export const PLATFORMS = ["레뷰", "파블로", "리뷰노트", "서울오빠", "디너의여왕", "모두블로그"] as const;
+export const PLATFORMS = ["레뷰", "파블로", "리뷰노트", "디너의여왕", "모두블로그"] as const;
 
 /** campaign_type 값 → 화면 표시 (사용자가 고르는 기준인 "무엇을 하게 되는가"로 이름 붙임) */
 export const CAMPAIGN_TYPE_LABELS: Record<string, { label: string; hint: string }> = {
