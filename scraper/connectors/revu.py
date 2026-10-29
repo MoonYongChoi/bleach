@@ -100,6 +100,25 @@ class RevuConnector(Connector):
         return raw
 
 
+# 카드 하나 -> dict. 채널 아이콘(블로그/인스타 등)은 대개 img alt 나 클래스명에만 있다.
+CARD_JS = """els => els
+    .filter(el => el.querySelector('.card-title'))
+    .map(el => {
+        const img = el.querySelector('img.thumb-img');
+        return {
+            href: el.getAttribute('href'),
+            title: el.querySelector('.card-title')?.textContent?.trim() || null,
+            desc: el.querySelector('.card-desc')?.textContent?.trim() || null,
+            status: el.querySelector('.card-status')?.textContent?.trim() || '',
+            image: img ? (img.currentSrc || img.getAttribute('src') || img.dataset.src || null) : null,
+            media: [...el.querySelectorAll('img[alt], [class*="media"], [class*="sns"], [class*="channel"]')]
+                .map(x => (x.getAttribute('alt') || x.textContent || '').trim())
+                .filter(t => t && t.length <= 20),
+            text: el.innerText || ''
+        };
+    })"""
+
+
 def _fetch() -> list[RawCampaign]:
     # Playwright는 레뷰에만 필요하니, 설치 안 된 환경에서도 레지스트리 import가 되도록 지연 import
     from playwright.sync_api import sync_playwright
@@ -119,24 +138,32 @@ def _fetch() -> list[RawCampaign]:
         for category in CATEGORIES:
             page.goto(f"{BASE_URL}/category/{category}", wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(1500)
-            # 썸네일이 lazy-load라 화면 밖 카드는 src가 비어 있다 (DB상 이미지 채움률 50%) — 끝까지 스크롤
-            for _ in range(10):
-                page.mouse.wheel(0, 4000)
-                page.wait_for_timeout(300)
 
-            cards = page.eval_on_selector_all(
-                'a[href^="/campaign/"]',
-                """els => els
-                    .filter(el => el.querySelector('.card-title'))
-                    .map(el => ({
-                        href: el.getAttribute('href'),
-                        title: el.querySelector('.card-title')?.textContent?.trim() || null,
-                        desc: el.querySelector('.card-desc')?.textContent?.trim() || null,
-                        status: el.querySelector('.card-status')?.textContent?.trim() || '',
-                        image: el.querySelector('img.thumb-img')?.getAttribute('src') || null,
-                        text: el.innerText || ''
-                    }))""",
-            )
+            cards = page.eval_on_selector_all('a[href^="/campaign/"]', CARD_JS)
+            if not cards:
+                # 조용히 0건으로 끝나면 아무도 모른다 — 실패로 드러나게 한다
+                raise RuntimeError(f"/category/{category} 에서 카드를 하나도 찾지 못했습니다 ({page.url})")
+
+            # 썸네일이 lazy-load라 화면 밖 카드는 src가 비어 있다 (DB상 이미지 채움률 50%).
+            # 스크롤로 이미지를 불러온 뒤 다시 읽어 *이미지만* 보충한다 — 스크롤이 목록을 바꿔도
+            # 처음 읽은 카드는 그대로 쓴다.
+            try:
+                for _ in range(8):
+                    page.evaluate("window.scrollBy(0, window.innerHeight)")
+                    page.wait_for_timeout(250)
+                images = {
+                    c["href"]: c["image"]
+                    for c in page.eval_on_selector_all('a[href^="/campaign/"]', CARD_JS)
+                    if c["image"]
+                }
+                for card in cards:
+                    card["image"] = card["image"] or images.get(card["href"])
+            except Exception:  # noqa: BLE001 - 이미지 보충은 실패해도 수집은 계속
+                pass
+
+            closed = sum(1 for c in cards if _is_closed(c["status"]))
+            print(f"[레뷰] /category/{category}: 카드 {len(cards)}개, 모집마감으로 건너뜀 {closed}개, "
+                  f"상태 예시 {[c['status'] for c in cards[:3]]}")
 
             for card in cards:
                 m = re.search(r"/campaign/(\d+)", card["href"] or "")
