@@ -252,11 +252,19 @@ export function applyRate(campaign: Pick<Campaign, "recruit_count" | "applicant_
   return campaign.applicant_count / campaign.recruit_count;
 }
 
+/** 오늘 날짜 "YYYY-MM-DD" — 보는 사람 기기의 시간대와 상관없이 한국 시간 기준 */
+export function todayKst(): string {
+  // en-CA 로케일은 YYYY-MM-DD 형식으로 날짜를 준다
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+/** 마감까지 남은 일수 (한국 시간 기준). deadline_date는 이미 KST 날짜로 저장돼 있다. */
 export function dDay(deadlineDate: string | null): number | null {
   if (!deadlineDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const deadline = new Date(deadlineDate);
-  deadline.setHours(0, 0, 0, 0);
-  return Math.round((deadline.getTime() - today.getTime()) / 86400000);
+  // 두 날짜를 모두 UTC 자정으로 놓고 빼면 기기 시간대·서머타임 영향 없이 날짜 차이만 남는다
+  const toUtc = (ymd: string) => {
+    const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toUtc(deadlineDate) - toUtc(todayKst())) / 86400000);
 }

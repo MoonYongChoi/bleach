@@ -10,7 +10,7 @@ on:
         description: "플랫폼별 표본 수 (0 = 전수)"
         default: "0"
   schedule:
-    # 매주 월요일 10:15 KST
+    # 매주 월요일 10:15 KST (cron은 UTC 기준이라 01:15)
     - cron: "15 1 * * 1"
 
 jobs:

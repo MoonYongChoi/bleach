@@ -2,7 +2,8 @@ name: Scrape campaigns
 
 on:
   schedule:
-    # 하루 4회: 00:30 / 06:30 / 12:30 / 18:30 (UTC) = 09:30 / 15:30 / 21:30 / 03:30 (KST)
+    # GitHub Actions cron은 UTC만 받는다 — 한국 시간(KST = UTC+9)에서 9시간을 빼서 적는다.
+    # 하루 4회 KST 09:30 / 15:30 / 21:30 / 03:30 = UTC 00:30 / 06:30 / 12:30 / 18:30
     - cron: "30 0,6,12,18 * * *"
   workflow_dispatch:
     inputs:
