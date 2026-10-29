@@ -208,7 +208,11 @@ def resolve_region(raw: str | None) -> tuple[str | None, str | None]:
 
     gugun = "/".join(dict.fromkeys(guguns)) if guguns and not unresolved else raw
     if explicit_sido:
-        return explicit_sido, (gugun if guguns or unresolved else None)
+        # "서울/둔촌동역": 시/도는 확실하고 나머지는 동네·역 이름 — 표시용으로만 남긴다
+        leftover = [t for t in tokens if not normalize_sido(t)]
+        if guguns:
+            return explicit_sido, "/".join(dict.fromkeys(guguns))
+        return explicit_sido, ("/".join(leftover) or None)
 
     if candidate_sets:
         # 여러 토큰이 공통으로 속하는 시/도가 있으면 그걸로 모호함을 해소한다.

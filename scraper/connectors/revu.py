@@ -109,6 +109,9 @@ class RevuConnector(Connector):
     def fetch(self) -> list[RawCampaign]:
         return _fetch()
 
+    def prepare_browser(self, context) -> None:
+        _login(context)
+
     def from_db_row(self, row: dict) -> RawCampaign:
         raw = super().from_db_row(row)
         # 정제 전 스키마는 category 칸에 페이지 이름("제품"/"지역")을 넣었다.

@@ -32,6 +32,11 @@ CATEGORY_ALIASES = {
     "생활": "생활", "서비스": "생활", "반려동물": "생활", "유아동": "생활", "리빙": "생활",
     "문화": "문화·여가", "여가": "문화·여가", "운동": "문화·여가", "도서": "문화·여가",
     "문화/여가": "문화·여가", "체험": "문화·여가",
+    # 영문 분류 코드 (모두블로그 썸네일 경로 /list_thumb/<code>/ 등)
+    "food": "맛집", "restaurant": "맛집", "cafe": "카페·디저트", "dessert": "카페·디저트",
+    "beauty": "뷰티", "fashion": "뷰티", "travel": "여행·숙박", "stay": "여행·숙박",
+    "digital": "디지털", "it": "디지털", "life": "생활", "living": "생활", "pet": "생활",
+    "baby": "생활", "culture": "문화·여가", "leisure": "문화·여가", "book": "문화·여가",
 }
 
 # 카테고리처럼 생겼지만 실제로는 유형/페이지 이름이라 분류 정보가 없는 값
@@ -402,7 +407,10 @@ def _guguns_in(sido: Optional[str], gugun: Optional[str]) -> list[str]:
     """region_gugun "부천시/부평구"(경기) -> ["부천시"]: 다른 시/도에 속한 구는 하위 지역 필터에서 뺀다."""
     if not sido or not gugun:
         return []
-    return [g for g in gugun.split("/") if g and sido in GU_SI_TO_SIDO.get(g, [sido])]
+    if sido == "해외":
+        return [g for g in gugun.split("/") if g]
+    # 행정구역 표에 있는 이름만 (역·동네 이름은 하위 지역 필터 선택지가 되면 안 된다)
+    return [g for g in gugun.split("/") if sido in GU_SI_TO_SIDO.get(g, [])]
 
 
 def normalize_for(connector, raw, today: Optional[date] = None) -> NormalizeResult:

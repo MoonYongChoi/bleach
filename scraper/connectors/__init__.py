@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from connectors.base import Connector, RawCampaign
+from connectors.dinnerqueen import DinnerqueenConnector
+from connectors.modublog import ModublogConnector
 from connectors.pavlovu import PavlovuConnector
 from connectors.reviewnote import ReviewnoteConnector
 from connectors.revu import RevuConnector
+from connectors.seoulouba import SeouloubaConnector
 
 REGISTRY: list[Connector] = [
     PavlovuConnector(),
     ReviewnoteConnector(),
     RevuConnector(),
+    SeouloubaConnector(),
+    DinnerqueenConnector(),
+    ModublogConnector(),
 ]
 
 BY_KEY: dict[str, Connector] = {c.key: c for c in REGISTRY}

@@ -140,28 +140,38 @@ def fetch_static(url: str) -> tuple[str | None, str | None, int | None]:
 
 
 def fetch_with_browser(rows: list[dict]) -> dict[str, tuple[str | None, str | None, int | None]]:
-    """레뷰처럼 로그인 + JS 렌더링이 필요한 사이트."""
+    """로그인(레뷰)이나 JS 렌더링·봇 확인(모두블로그)이 필요한 사이트 — 플랫폼별로 브라우저를 따로 연다."""
     from playwright.sync_api import sync_playwright
 
-    from connectors.revu import _login
-
     pages: dict[str, tuple[str | None, str | None, int | None]] = {}
+    by_platform: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        by_platform[row["platform"]].append(row)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        context = browser.new_context()
-        if not _login(context):
-            browser.close()
-            raise RuntimeError("레뷰 로그인 실패 — REVU_ID / REVU_PW 확인")
-        page = context.new_page()
-        for row in rows:
+        for label, platform_rows in by_platform.items():
+            context = browser.new_context()
             try:
-                resp = page.goto(row["source_url"], wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(1000)
-                pages[row["source_url"]] = (page.inner_text("body"), page.url, resp.status if resp else None)
-            except Exception:  # noqa: BLE001 - 한 페이지 실패가 검수 전체를 막으면 안 됨
-                pages[row["source_url"]] = (None, None, None)
+                BY_LABEL[label].prepare_browser(context)
+            except Exception as e:  # noqa: BLE001 - 준비 실패면 그 플랫폼 행은 '페이지 열림' 실패로 남긴다
+                print(f"[{label}] 브라우저 준비 실패: {e}")
+                context.close()
+                continue
+            page = context.new_page()
+            _fetch_pages(page, platform_rows, pages)
+            context.close()
         browser.close()
     return pages
+
+
+def _fetch_pages(page, rows: list[dict], pages: dict) -> None:
+    for row in rows:
+        try:
+            resp = page.goto(row["source_url"], wait_until="networkidle", timeout=30000)
+            page.wait_for_timeout(1000)
+            pages[row["source_url"]] = (page.inner_text("body"), page.url, resp.status if resp else None)
+        except Exception:  # noqa: BLE001 - 한 페이지 실패가 검수 전체를 막으면 안 됨
+            pages[row["source_url"]] = (None, None, None)
 
 
 def sample_rows(platform_labels: list[str], per: int) -> list[dict]:

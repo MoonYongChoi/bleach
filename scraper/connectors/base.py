@@ -7,6 +7,7 @@ type_hints / channel_hints 로 알려준다.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import ClassVar, Optional, Union
@@ -47,6 +48,41 @@ class RawCampaign:
         return asdict(self)
 
 
+_BRACKET_RE = re.compile(r"^\s*\[([^\]]{1,30})\]\s*")
+_CHANNEL_WORDS = {"블로그", "릴스", "클립", "쇼츠", "숏츠", "인스타", "인스타그램", "유튜브", "틱톡"}
+_TYPE_WORDS = {"방문형", "배송형", "구매형", "기자단", "촬영기자단", "방문", "배송", "구매평", "재택"}
+_IGNORE_WORDS = {"프리미엄", "긴급", "마감임박", "신규", "추천", "랜덤픽", "only", "단독"}
+
+
+def split_title_brackets(title: str) -> tuple[str, dict[str, list[str]]]:
+    """'[프리미엄][릴스][에이지투웨니스] 시그니처 세트' -> ('시그니처 세트', {channels, types, regions, others}).
+
+    체험단 사이트들은 제목 앞 괄호에 지역/유형/채널/브랜드를 섞어 넣는다. 지역인지는 regions.resolve_region이
+    시/도를 찾는지로 판단하고, 아무것도 아니면 others(보통 업체·브랜드명)로 돌려준다.
+    """
+    from regions import resolve_region
+
+    found: dict[str, list[str]] = {"channels": [], "types": [], "regions": [], "others": []}
+    rest = title or ""
+    while True:
+        m = _BRACKET_RE.match(rest)
+        if not m or not rest[m.end():].strip():
+            break
+        token = m.group(1).strip()
+        rest = rest[m.end():]
+        if token in _CHANNEL_WORDS:
+            found["channels"].append(token)
+        elif token in _TYPE_WORDS:
+            found["types"].append(token)
+        elif token.lower() in _IGNORE_WORDS:
+            pass
+        elif resolve_region(token)[0]:
+            found["regions"].append(token)
+        else:
+            found["others"].append(token)
+    return rest.strip(), found
+
+
 class Connector:
     key: ClassVar[str]  # DB/코드에서 쓰는 불변 키 (예: "revu")
     label: ClassVar[str]  # 화면 표시 + 현재 campaigns.platform 값 (예: "레뷰")
@@ -61,6 +97,9 @@ class Connector:
 
     def fetch(self) -> list[RawCampaign]:
         raise NotImplementedError
+
+    def prepare_browser(self, context) -> None:
+        """needs_browser 커넥터가 페이지를 열기 전에 할 일 (예: 로그인). verify.py도 이걸 쓴다."""
 
     def from_db_row(self, row: dict) -> RawCampaign:
         """이미 적재된 행 -> RawCampaign (backfill.py가 새 규칙으로 재정제할 때 사용).
