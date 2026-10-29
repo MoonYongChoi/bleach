@@ -30,6 +30,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
 DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*(?:남음|남았)")
 DDAY_RE = re.compile(r"D\s*-\s*(\d+)", re.I)
 RECRUIT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*([\d,]+)")
+_CHANNEL_BADGES = {"릴스", "클립", "쇼츠", "숏츠", "블로그", "인스타", "인스타그램", "유튜브", "틱톡"}
 _NOT_DESCRIPTION = re.compile(r"신청|남음|오늘까지|내일까지|포인트|Only|^\[")
 
 
@@ -63,7 +64,12 @@ def parse_cards(html: str) -> list[RawCampaign]:
         paragraphs = [p.get_text(" ", strip=True) for p in card.select(".qz-dq-card__text p")]
         description = next((p for p in paragraphs[1:] if p and not _NOT_DESCRIPTION.search(p)), None)
 
-        badges = [b.get_text(strip=True) for b in card.select(".qz-dq-card__badge-row strong")]
+        # 뱃지 줄에는 채널(릴스/클립)뿐 아니라 "포인트", "랜덤픽" 같은 것도 있다 — 채널 단어만 남긴다
+        badges = [
+            t
+            for t in (b.get_text(strip=True) for b in card.select(".qz-dq-card__badge-row strong"))
+            if t in _CHANNEL_BADGES
+        ]
         region = (brackets["regions"] or [None])[0]
 
         campaigns.append(
@@ -122,8 +128,14 @@ class DinnerqueenConnector(Connector):
             if c.source_url not in seen:
                 seen.add(c.source_url)
                 campaigns.append(c)
-        reels = sum(1 for c in campaigns if c.channels_raw)
-        print(f"[디너의여왕] 릴스/클립 뱃지가 있는 카드 {reels}/{len(campaigns)}")
+        from collections import Counter
+
+        badge_counts = Counter(b for c in campaigns for b in set(c.channels_raw))
+        print(f"[디너의여왕] 뱃지/제목 괄호 값 집계: {dict(badge_counts)} (전체 {len(campaigns)}건)")
+        no_badge = [c for c in campaigns if not c.channels_raw]
+        print(f"[디너의여왕] 채널 표시가 없는 카드 {len(no_badge)}건")
+        for c in campaigns[:3] + campaigns[-3:]:
+            print(f"[디너의여왕] 표본 {c.source_url} 제목={c.title!r} 채널원본={c.channels_raw}")
         return campaigns
 
 if __name__ == "__main__":
