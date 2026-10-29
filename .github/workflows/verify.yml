@@ -1,14 +1,14 @@
 name: Verify against source sites
 
-# DB에 적재된 캠페인을 원본 사이트 상세 페이지와 대조하는 표본 검수 (scraper/verify.py).
+# DB에 적재된 활성 캠페인 전체를 원본 사이트 상세 페이지와 대조하는 검수 (scraper/verify.py).
 # 결과는 실행 화면의 Summary 탭에 표로 남는다. DB에는 쓰지 않는다.
 
 on:
   workflow_dispatch:
     inputs:
       per:
-        description: "플랫폼별 표본 수"
-        default: "15"
+        description: "플랫폼별 표본 수 (0 = 전수)"
+        default: "0"
   schedule:
     # 매주 월요일 10:15 KST
     - cron: "15 1 * * 1"
@@ -16,7 +16,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: scraper
@@ -37,4 +37,12 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REVU_ID: ${{ secrets.REVU_ID }}
           REVU_PW: ${{ secrets.REVU_PW }}
-        run: python verify.py --per "${{ inputs.per || '15' }}"
+        run: python verify.py --per "${{ inputs.per || '0' }}"
+
+      - name: Upload per-campaign results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-result
+          path: scraper/verify_result.csv
+          if-no-files-found: ignore

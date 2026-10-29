@@ -44,3 +44,4 @@ scraper/**/__pycache__
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+scraper/verify_result.csv

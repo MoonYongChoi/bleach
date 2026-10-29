@@ -1,7 +1,7 @@
-"""DB에 적재된 캠페인을 원본 사이트의 상세 페이지와 대조하는 표본 검수.
+"""DB에 적재된 캠페인을 원본 사이트의 상세 페이지와 대조하는 검수 (기본: 전수, 옵션: 표본).
 
-    python verify.py              # 플랫폼별 15건씩 무작위 표본
-    python verify.py --per 30     # 표본 크기
+    python verify.py              # 활성 캠페인 전수 검사
+    python verify.py --per 30     # 플랫폼별 30건 무작위 표본만
     python verify.py --only revu  # 일부 플랫폼만
 
 스크래퍼는 목록 페이지를 읽지만 검수는 각 캠페인의 상세 페이지(source_url)를 따로 연다 — 같은
@@ -14,8 +14,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import re
+import time
 from collections import Counter, defaultdict
 from datetime import date
 
@@ -173,10 +175,16 @@ def sample_rows(platform_labels: list[str], per: int) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             rows: list[dict] = []
             for label in platform_labels:
-                cur.execute(
-                    "select * from public.campaigns where is_active and platform = %s order by random() limit %s",
-                    (label, per),
-                )
+                if per > 0:
+                    cur.execute(
+                        "select * from public.campaigns where is_active and platform = %s order by random() limit %s",
+                        (label, per),
+                    )
+                else:  # 전수
+                    cur.execute(
+                        "select * from public.campaigns where is_active and platform = %s order by source_url",
+                        (label,),
+                    )
                 rows += cur.fetchall()
             return rows
     finally:
@@ -212,7 +220,10 @@ def report(results: list[tuple[dict, dict[str, str]]]) -> str:
 
     lines += ["", f"### 확인이 필요한 캠페인 ({len(problems)}건)", ""]
     if problems:
-        lines += ["| 플랫폼 | 제목 | 안 맞는 항목 | 원본 |", "|---|---|---|---|", *problems]
+        shown = problems[:150]
+        lines += ["| 플랫폼 | 제목 | 안 맞는 항목 | 원본 |", "|---|---|---|---|", *shown]
+        if len(problems) > len(shown):
+            lines.append(f"\n… 외 {len(problems) - len(shown)}건은 첨부된 verify_result.csv 참고")
     else:
         lines.append("없음")
     return "\n".join(lines)
@@ -220,7 +231,8 @@ def report(results: list[tuple[dict, dict[str, str]]]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--per", type=int, default=15, help="플랫폼별 표본 수")
+    parser.add_argument("--per", type=int, default=0, help="플랫폼별 표본 수 (0 = 전수)")
+    parser.add_argument("--csv", default="verify_result.csv", help="캠페인별 판정 결과 CSV 경로")
     parser.add_argument("--only", help=f"쉼표로 구분한 커넥터 키 ({', '.join(BY_KEY)})")
     args = parser.parse_args()
 
@@ -235,6 +247,15 @@ def main() -> None:
         res = check_row(row, *(page or (None, None, None)))
         res["image"] = check_image(row.get("image_url"))
         results.append((row, res))
+        if not BY_LABEL[row["platform"]].needs_browser:
+            time.sleep(0.3)  # 원본 사이트에 부담 주지 않게 (전수 검사는 수백 건)
+    print(f"검사 {len(results)}건 완료")
+
+    with open(args.csv, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(["platform", "title", "source_url", *FIELDS])
+        for row, res in results:
+            writer.writerow([row["platform"], row["title"], row["source_url"], *(res[f] for f in FIELDS)])
 
     md = report(results)
     print(md)
