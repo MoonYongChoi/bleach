@@ -10,6 +10,7 @@ import {
   type FilterState,
 } from "@/components/filter-sheet";
 import { SortSheet } from "@/components/sort-sheet";
+import { PlatformRequestSheet } from "@/components/platform-request-sheet";
 import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { EmptyState } from "@/components/empty-state";
 import {
@@ -42,6 +43,7 @@ export default function Home() {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTER_STATE);
   const [filterSection, setFilterSection] = useState<FilterSection | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     sidos: [],
     guguns: {},
@@ -127,6 +129,15 @@ export default function Home() {
             />
           ))
         )}
+
+        {!loading && (
+          <button
+            onClick={() => setRequestOpen(true)}
+            className="mt-2 rounded-2xl border border-dashed border-border px-4 py-4 text-center text-sm text-muted-foreground hover:bg-muted/40"
+          >
+            찾는 체험단 사이트가 없나요? <span className="font-medium text-primary">추가 요청하기</span>
+          </button>
+        )}
       </main>
 
       <FilterSheet
@@ -137,7 +148,12 @@ export default function Home() {
         value={filters}
         onApply={setFilters}
         countFor={countFor}
+        onRequestPlatform={() => {
+          setFilterSection(null);
+          setRequestOpen(true);
+        }}
       />
+      <PlatformRequestSheet open={requestOpen} onOpenChange={setRequestOpen} />
       <SortSheet
         open={sortOpen}
         onOpenChange={setSortOpen}

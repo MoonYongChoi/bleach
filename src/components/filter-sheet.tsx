@@ -93,6 +93,7 @@ export function FilterSheet({
   value,
   onApply,
   countFor,
+  onRequestPlatform,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -102,6 +103,7 @@ export function FilterSheet({
   onApply: (next: FilterState) => void;
   /** 지금 고른 조건으로 몇 개가 나오는지 — 적용 버튼에 미리 보여준다 */
   countFor: (draft: FilterState) => Promise<number>;
+  onRequestPlatform: () => void;
 }) {
   const [draft, setDraft] = useState<FilterState>(value);
   const [count, setCount] = useState<number | null>(null);
@@ -277,6 +279,12 @@ export function FilterSheet({
                 </Chip>
               ))}
             </ChipGroup>
+            <button
+              onClick={onRequestPlatform}
+              className="mt-3 text-xs text-muted-foreground underline underline-offset-2"
+            >
+              다른 사이트도 모아주세요 →
+            </button>
           </Section>
 
           <Section {...sectionProps("applyRate")} hint="신청자 ÷ 모집인원">
