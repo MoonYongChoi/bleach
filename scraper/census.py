@@ -292,6 +292,69 @@ def run(rows: list[dict], key: str) -> None:
         csv.writer(fh).writerows([["platform", "title", "source_url", "verdicts..."], *out])
 
 
+def fix_categories(rows: list[dict], key: str, apply: bool) -> None:
+    """원본 카테고리(category_raw)가 비어 있는 캠페인을 상세 페이지의 사이트 카테고리로 채우고, 표준 카테고리를 다시 계산한다.
+    기본은 미리보기(DB 변경 없음). apply=True일 때만 한 트랜잭션으로 쓴다. category_raw가 이미 있는 행은 건드리지 않는다."""
+    from normalize import normalize_category
+
+    targets = [r for r in rows if not r.get("category_raw")]
+    print(f"카테고리 원본이 비어 있는 활성 캠페인 {len(targets)}건 (전체 {len(rows)}건)")
+    pages = fetch_with_browser([r for r in targets if uses_browser(BY_LABEL[r["platform"]])])
+    updates: list[tuple[str, str, str | None]] = []
+    changes: Counter = Counter()
+    no_label = unreadable = 0
+    for r in targets:
+        if uses_browser(BY_LABEL[r["platform"]]):
+            text, final_url, status = pages.get(r["source_url"], (None, None, None))
+        else:
+            text, final_url, status = fetch_static_lines(r["source_url"])
+            time.sleep(0.2)
+        if text is None or (status and status >= 400) or (final_url and "/login" in final_url):
+            unreadable += 1
+            continue
+        lines = [ln.strip() for ln in re.split(r"[\r\n]+", text) if ln.strip()]
+        label = FACTS[key](lines).get("category_label")
+        if not label:
+            no_label += 1
+            continue
+        new_category = normalize_category(label, r["title"], r.get("description"), r.get("campaign_type") or "기타")
+        updates.append((r["id"], label, new_category))
+        changes[(r.get("category"), new_category)] += 1
+    changed = sum(n for (old, new), n in changes.items() if old != new)
+    lines_out = [f"## 카테고리 채우기 {'(적용)' if apply else '(미리보기 — DB 변경 없음)'}: {targets[0]['platform'] if targets else key}", "",
+                 f"- 대상 {len(targets)}건 · 사이트 카테고리를 읽음 {len(updates)}건 · 라벨 없음 {no_label} · 읽기 실패 {unreadable}",
+                 f"- 이 중 표준 카테고리가 바뀌는 건 {changed}건, 같은 건 {len(updates) - changed}건", "",
+                 "| 지금(DB) | 바뀐 뒤 | 건수 |", "|---|---|---|"]
+    lines_out += [f"| {old} | {new} | {n} |" for (old, new), n in changes.most_common(40) if old != new]
+    report = "\n".join(lines_out)
+    print(report)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write(report + "\n")
+    if not apply:
+        print("\n(미리보기라 DB는 그대로입니다. 적용하려면 --apply)")
+        return
+    if not updates:
+        return
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        with conn, conn.cursor() as cur:
+            execute_values(
+                cur,
+                "update public.campaigns c set category_raw = v.raw, category = v.cat "
+                "from (values %s) as v(id, raw, cat) "
+                "where c.id = v.id::uuid and c.category_raw is null",
+                updates,
+            )
+            print(f"\n{cur.rowcount}건 적용 완료")
+    finally:
+        conn.close()
+
+
 def drift_check(rows: list[dict], connector) -> None:
     """상세 페이지가 로그인 뒤에 있는 사이트용: 지금 목록을 다시 수집해 정제한 값과 DB 값을 비교한다.
     사이트 원본(목록 API)과 현재 정제 규칙 기준으로 DB가 얼마나 어긋났는지 본다 — 목록에 있는 캠페인만 해당."""
@@ -331,6 +394,8 @@ def main() -> None:
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
     parser.add_argument("--dump", action="store_true", help="표본 상세 페이지 글자를 출력만 한다")
     parser.add_argument("--lines", type=int, default=40)
+    parser.add_argument("--fix-category", action="store_true", help="비어 있는 category_raw를 사이트 카테고리로 채운다 (기본은 미리보기)")
+    parser.add_argument("--apply", action="store_true", help="--fix-category를 실제로 DB에 쓴다")
     parser.add_argument("--skip", type=int, default=0, help="앞쪽 메뉴·푸터를 건너뛸 줄 수")
     args = parser.parse_args()
 
@@ -341,6 +406,11 @@ def main() -> None:
         dump(rows, args.lines, args.skip)
         return
     key = connectors[0].key
+    if args.fix_category:
+        if key not in FACTS:
+            raise SystemExit(f"{key}: 추출 규칙이 아직 없습니다")
+        fix_categories(rows, key, args.apply)
+        return
     if key == "reviewnote":
         drift_check(rows, connectors[0])
         return

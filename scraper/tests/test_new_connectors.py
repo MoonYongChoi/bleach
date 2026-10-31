@@ -72,6 +72,19 @@ class DinnerqueenTest(unittest.TestCase):
         r = parse_cards(card)[0]
         self.assertEqual(r.type_hint, "배송")
 
+    def test_payback_bracket_is_purchase_type_and_real_vendor(self):
+        # 2026-10-31 전수 대조: 사이트는 "페이백 캠페인"인데 배송으로 들어가고 업체가 "전국"이던 카드
+        card = (
+            '<div class="qz-dq-card campaign"><a class="qz-dq-card__link" href="/taste/1614101" '
+            'title="[전국][페이백][포장][교촌치킨] 오리지널 찰도그 신청하기"><img src="/a.jpg"></a>'
+            '<div class="qz-dq-card__text"><p>[전국][페이백][포장][교촌치킨] 오리지널 찰도그</p>'
+            "<p>찰도그 2종</p><p>8일 남음 | 신청 11 / 6</p></div></div>"
+        )
+        r = norm("dinnerqueen", parse_cards(card)[0])
+        self.assertEqual(r["campaign_type"], "구매")
+        self.assertEqual(r["vendor"], "교촌치킨")
+        self.assertEqual((r["region_sido"], r["region_gugun"]), (None, None))
+
 
 class ModublogTest(unittest.TestCase):
     # probe 로그의 실제 카드를 CARD_JS가 돌려주는 모양으로

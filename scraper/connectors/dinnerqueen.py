@@ -33,6 +33,8 @@ RECRUIT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*([\d,]+)")
 _CHANNEL_BADGES = {"릴스", "클립", "쇼츠", "숏츠", "블로그", "인스타", "인스타그램", "유튜브", "틱톡"}
 # 사이트 분류 탭(맛집/뷰티/배송/기타/기자단/여가/맞춤)과 같은 이름이 카드 뱃지로도 붙는다 (2026-10-29 카드 조사)
 _CATEGORY_BADGES = {"맛집", "뷰티", "배송", "기타", "기자단", "여가", "맞춤"}
+# 제목 앞 괄호에 업체 이름 대신 들어오는 말 ("[전국][페이백][포장][교촌치킨]"에서 업체는 교촌치킨)
+_NOT_VENDOR = {"전국", "페이백", "포장", "포인트", "배달", "택배"}
 _NOT_DESCRIPTION = re.compile(r"신청|남음|오늘까지|내일까지|포인트|Only|^\[")
 
 
@@ -71,13 +73,16 @@ def parse_cards(html: str) -> list[RawCampaign]:
         badges = [t for t in badge_texts if t in _CHANNEL_BADGES]
         category_badge = next((t for t in badge_texts if t in _CATEGORY_BADGES), None)
         region = (brackets["regions"] or [None])[0]
+        vendor = next((o for o in brackets["others"] if o not in _NOT_VENDOR), None)
+        # "[페이백]" 표시는 직접 구매 후 환급받는 캠페인 — 카드에 따로 유형이 없어 제목 괄호로 알아본다 (2026-10-31 전수 대조)
+        is_payback = "페이백" in brackets["others"] or "페이백" in brackets["types"]
 
         campaigns.append(
             RawCampaign(
                 source_url=f"{BASE_URL}/taste/{m.group(1)}",
                 title=title,
                 description=description,
-                vendor=(brackets["others"] or [None])[0],
+                vendor=vendor,
                 image_url=urljoin(BASE_URL, img["src"]) if img and img.get("src") else None,
                 region_raw=region,
                 deadline_days_left=days_left,
@@ -88,6 +93,7 @@ def parse_cards(html: str) -> list[RawCampaign]:
                 # 단 사이트가 배송/기자단 분류를 직접 붙인 카드는 그 분류를 따른다.
                 type_hint=category_badge if category_badge in ("배송", "기자단") else ("방문" if region else "배송"),
                 channels_raw=badges + brackets["channels"],
+                is_payback=is_payback,
             )
         )
     return campaigns

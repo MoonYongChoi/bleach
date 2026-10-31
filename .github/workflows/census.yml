@@ -12,6 +12,14 @@ on:
       skip:
         description: "덤프에서 앞쪽 N줄 건너뛰기 (메뉴·푸터가 긴 사이트)"
         default: "0"
+      fix_category:
+        description: "비어 있는 category_raw를 사이트 카테고리로 채우기 (apply를 켜기 전에는 미리보기)"
+        type: boolean
+        default: false
+      apply:
+        description: "fix_category를 실제로 DB에 쓰기"
+        type: boolean
+        default: false
       dump:
         description: "표본 상세 페이지 글자만 출력 (추출 규칙 조사용)"
         type: boolean
@@ -41,4 +49,8 @@ jobs:
         run: |
           args=""
           if [ "${{ inputs.dump }}" = "true" ]; then args="--dump --skip ${{ inputs.skip || '0' }}"; fi
+          if [ "${{ inputs.fix_category }}" = "true" ]; then
+            args="--fix-category"
+            if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
+          fi
           python census.py --only "${{ inputs.only }}" $args
