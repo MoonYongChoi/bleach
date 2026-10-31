@@ -110,6 +110,23 @@ def probe_cards_detail(url: str, selector: str, n: int = 6) -> None:
         browser.close()
 
 
+def probe_text(url: str) -> None:
+    """상세 페이지의 보이는 글자를 줄 단위로 그대로 출력 — 날짜·인원이 어떤 문장으로 적혀 있는지 본다."""
+    print(f"\n===== [페이지 글자] {url}")
+    resp = requests.get(url, headers=HEADERS, timeout=20)
+    print(f"  status {resp.status_code} | bytes {len(resp.content)}")
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    lines = [ln for ln in soup.get_text("\n", strip=True).split("\n") if ln]
+    print(f"  줄 수 {len(lines)} — 처음 70줄:")
+    for i, ln in enumerate(lines[:70]):
+        print(f"  {i:3d} | {ln[:140]}")
+    # 날짜/기간처럼 보이는 줄만 따로
+    dated = [ln for ln in lines if re.search(r"\d{1,2}\s*[./월]\s*\d{1,2}|기간|마감|D-\d", ln)]
+    print("  날짜·기간 후보 줄:", dated[:15])
+
+
 def probe_robots(url: str) -> None:
     root = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
     try:
@@ -121,6 +138,10 @@ def probe_robots(url: str) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args and args[0] == "--text":  # python probe.py --text <url> [<url> ...]
+        for target in args[1:]:
+            probe_text(target)
+        sys.exit(0)
     if args and args[0] == "--cards":  # python probe.py --cards <url> <css selector>
         probe_cards_detail(args[1], args[2])
         sys.exit(0)
