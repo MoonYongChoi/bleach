@@ -45,6 +45,8 @@ class ReviewnoteConnector(Connector):
     key = "reviewnote"
     label = "리뷰노트"
     base_url = "https://www.reviewnote.co.kr"
+    # 상세 페이지 정적 HTML에는 사이트 공통 틀(483자)만 있고 캠페인 내용은 JS가 그린다 (2026-10-31 검수)
+    verify_with_browser = True
     type_hints = {
         "VISIT": "방문",
         "DELIVERY": "배송",

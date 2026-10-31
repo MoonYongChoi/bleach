@@ -25,6 +25,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from connectors import BY_KEY, BY_LABEL, REGISTRY
+from normalize import today_kst
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
 
@@ -59,6 +60,17 @@ def compact(text: str) -> str:
     return re.sub(r"\s+", "", text or "").lower()
 
 
+def days_left_on_page(page_text: str) -> int | None:
+    m = re.search(r"(\d+)\s*일\s*남음|D\s*-\s*(\d+)", page_text, re.I)
+    if m:
+        return int(m.group(1) or m.group(2))
+    if "내일마감" in compact(page_text) or "내일까지" in compact(page_text):
+        return 1
+    if any(w in compact(page_text) for w in ("오늘마감", "오늘까지", "d-day")):
+        return 0
+    return None
+
+
 def deadline_patterns(d: date) -> list[str]:
     m, dd = d.month, d.day
     return [
@@ -85,7 +97,12 @@ def check_row(row: dict, page_text: str | None, final_url: str | None, status: i
     if row.get("deadline_date"):
         d = row["deadline_date"]
         d = date.fromisoformat(d) if isinstance(d, str) else d
-        result["deadline"] = "ok" if any(compact(p) in text for p in deadline_patterns(d)) else "missing"
+        if any(compact(p) in text for p in deadline_patterns(d)):
+            result["deadline"] = "ok"
+        else:
+            # 페이지에 날짜 대신 "3일 남음"/"D-3"/"오늘마감"만 적힌 사이트(모두블로그 등): 오늘 기준 남은 일수로 비교
+            left = days_left_on_page(page_text)
+            result["deadline"] = "missing" if left is None else ("ok" if abs((d - today_kst()).days - left) <= 1 else "mismatch")
 
     if row.get("recruit_count"):
         n = row["recruit_count"]
@@ -156,6 +173,10 @@ def fetch_static(url: str) -> tuple[str | None, str | None, int | None]:
     return soup.get_text(" ", strip=True) + " " + data, resp.url, resp.status_code
 
 
+def uses_browser(connector) -> bool:
+    return bool(connector.needs_browser or connector.verify_with_browser)
+
+
 def fetch_with_browser(rows: list[dict]) -> dict[str, tuple[str | None, str | None, int | None]]:
     """로그인(레뷰)이나 JS 렌더링·봇 확인(모두블로그)이 필요한 사이트 — 플랫폼별로 브라우저를 따로 연다."""
     from playwright.sync_api import sync_playwright
@@ -167,7 +188,8 @@ def fetch_with_browser(rows: list[dict]) -> dict[str, tuple[str | None, str | No
     with sync_playwright() as p:
         browser = p.chromium.launch()
         for label, platform_rows in by_platform.items():
-            context = browser.new_context()
+            ua = BY_LABEL[label].browser_user_agent
+            context = browser.new_context(user_agent=ua) if ua else browser.new_context()
             try:
                 BY_LABEL[label].prepare_browser(context)
             except Exception as e:  # noqa: BLE001 - 준비 실패면 그 플랫폼 행은 '페이지 열림' 실패로 남긴다
@@ -298,15 +320,15 @@ def main() -> None:
     results: list[tuple[dict, dict[str, str]]] = []
     diagnostics: list[str] = []
     seen_diag: Counter = Counter()
-    browser_rows = [r for r in rows if BY_LABEL[r["platform"]].needs_browser]
+    browser_rows = [r for r in rows if uses_browser(BY_LABEL[r["platform"]])]
     browser_pages = fetch_with_browser(browser_rows) if browser_rows else {}
     for row in rows:
-        page = browser_pages.get(row["source_url"]) if BY_LABEL[row["platform"]].needs_browser else fetch_static(row["source_url"])
+        page = browser_pages.get(row["source_url"]) if uses_browser(BY_LABEL[row["platform"]]) else fetch_static(row["source_url"])
         res = check_row(row, *(page or (None, None, None)))
         res["image"], image_detail = check_image(row.get("image_url"))
         results.append((row, res))
         diagnostics += diagnostics_for(row, res, (page or (None,))[0], image_detail, seen_diag)
-        if not BY_LABEL[row["platform"]].needs_browser:
+        if not uses_browser(BY_LABEL[row["platform"]]):
             time.sleep(0.3)  # 원본 사이트에 부담 주지 않게 (전수 검사는 수백 건)
     print(f"검사 {len(results)}건 완료")
 

@@ -103,8 +103,9 @@ class RevuConnector(Connector):
     required_env = ("REVU_ID", "REVU_PW")
     # /category/{제품,지역} 페이지 이름이 곧 유형이다.
     type_hints = {"제품": "배송", "지역": "방문"}
-    # 레뷰는 블로그 체험단이 기본이고, 릴스/쇼츠/클립 등은 제목 끝 "_릴스"나 카드 아이콘으로만 표시한다.
-    default_channels = ("blog",)
+    # 채널 기본값을 두지 않는다: 목록 카드에는 채널이 "_릴스" 제목 표기로만 나오고, 상세 페이지에는
+    # "인스타그램 팔로워 5만 이상" 같은 조건이 적혀 있어서 "표시 없음 = 블로그"가 틀리는 경우가 있었다
+    # (2026-10-31 원본 대조: 9건 중 7건에서 페이지에 블로그 언급이 없고 1건은 인스타그램 캠페인).
 
     def fetch(self) -> list[RawCampaign]:
         return _fetch()

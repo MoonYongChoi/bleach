@@ -100,6 +100,8 @@ class DinnerqueenConnector(Connector):
     # 다음 페이지 POST를 requests로 흉내 내면 첫 페이지가 그대로 다시 온다 (2026-10-29 시험 실행) —
     # 사이트가 실제로 하는 대로 브라우저에서 스크롤해서 불러온다.
     needs_browser = True
+    # 상세 페이지는 기본 HeadlessChrome UA에 403을 주고 이 UA는 통과시킨다 (2026-10-31 검수)
+    browser_user_agent = HEADERS["User-Agent"]
     # 뱃지에 릴스/클립만 따로 표시되고 나머지는 블로그 체험단이다
     default_channels = ("blog",)
 

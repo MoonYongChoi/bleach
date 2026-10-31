@@ -105,7 +105,11 @@ class Connector:
     key: ClassVar[str]  # DB/코드에서 쓰는 불변 키 (예: "revu")
     label: ClassVar[str]  # 화면 표시 + 현재 campaigns.platform 값 (예: "레뷰")
     base_url: ClassVar[str]
-    needs_browser: ClassVar[bool] = False  # Playwright 필요 여부
+    needs_browser: ClassVar[bool] = False  # Playwright 필요 여부 (수집에)
+    # 수집은 requests로 되지만 상세 페이지는 JS로 그려져서 검수에는 브라우저가 필요한 경우 (리뷰노트)
+    verify_with_browser: ClassVar[bool] = False
+    # 브라우저로 열 때 쓸 User-Agent (기본 HeadlessChrome을 막는 사이트용)
+    browser_user_agent: ClassVar[Optional[str]] = None
     required_env: ClassVar[tuple[str, ...]] = ()
     # 이 플랫폼 고유의 유형/채널 표기 -> 표준값. 공통 한국어 표기("방문", "배송" 등)는 normalize에 있다.
     type_hints: ClassVar[dict[str, str]] = {}
