@@ -56,7 +56,7 @@ export function CampaignCard({
         rel="noopener noreferrer"
         className="flex min-w-0 flex-1 gap-3 p-4 pr-1"
       >
-        <Thumbnail key={campaign.image_url ?? campaign.id} src={campaign.image_url} />
+        <Thumbnail key={campaign.image_url ?? campaign.id} src={campaign.image_url} category={campaign.category} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
