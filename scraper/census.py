@@ -51,7 +51,7 @@ def pick_dump_rows(rows: list[dict], per_group: int = 1) -> list[dict]:
     return list(picked.values())
 
 
-def dump(rows: list[dict], lines: int) -> None:
+def dump(rows: list[dict], lines: int, skip: int = 0) -> None:
     chosen = pick_dump_rows(rows)
     browser_rows = [r for r in chosen if uses_browser(BY_LABEL[r["platform"]])]
     pages = fetch_with_browser(browser_rows) if browser_rows else {}
@@ -68,7 +68,7 @@ def dump(rows: list[dict], lines: int) -> None:
         body = [ln.strip() for ln in re.split(r"[\r\n]+", text or "") if ln.strip()]
         # 달력 숫자·마스킹된 신청자 이름 같은 잡음은 건너뛴다
         shown = [ln for ln in body if not re.fullmatch(r"[\d<>]{1,2}|.{1,2}\*{2,}", ln)]
-        for i, ln in enumerate(shown[:lines]):
+        for i, ln in enumerate(shown[skip : skip + lines], start=skip):
             print(f"  {i:3d} | {ln[:150]}")
 
 
@@ -77,13 +77,14 @@ def main() -> None:
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
     parser.add_argument("--dump", action="store_true", help="표본 상세 페이지 글자를 출력만 한다")
     parser.add_argument("--lines", type=int, default=40)
+    parser.add_argument("--skip", type=int, default=0, help="앞쪽 메뉴·푸터를 건너뛸 줄 수")
     args = parser.parse_args()
 
     connectors = [BY_KEY[k.strip()] for k in args.only.split(",")]
     rows = sample_rows([c.label for c in connectors], 0)
     print(f"활성 캠페인 {len(rows)}건")
     if args.dump:
-        dump(rows, args.lines)
+        dump(rows, args.lines, args.skip)
         return
     raise SystemExit("전수 대조는 사이트별 추출 규칙을 만든 뒤에 켭니다 (--dump 결과 확인 필요)")
 

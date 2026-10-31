@@ -9,6 +9,9 @@ on:
       only:
         description: "커넥터 키 하나 (pavlovu / reviewnote / revu / dinnerqueen / modublog)"
         required: true
+      skip:
+        description: "덤프에서 앞쪽 N줄 건너뛰기 (메뉴·푸터가 긴 사이트)"
+        default: "0"
       dump:
         description: "표본 상세 페이지 글자만 출력 (추출 규칙 조사용)"
         type: boolean
@@ -37,5 +40,5 @@ jobs:
           REVU_PW: ${{ secrets.REVU_PW }}
         run: |
           args=""
-          if [ "${{ inputs.dump }}" = "true" ]; then args="--dump"; fi
+          if [ "${{ inputs.dump }}" = "true" ]; then args="--dump --skip ${{ inputs.skip || '0' }}"; fi
           python census.py --only "${{ inputs.only }}" $args
