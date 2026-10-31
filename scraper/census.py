@@ -13,7 +13,7 @@ import argparse
 import os
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 from collections import defaultdict
 
 import requests
@@ -237,11 +237,17 @@ def run(rows: list[dict], key: str) -> None:
     crosstabs: dict[str, Counter] = defaultdict(Counter)
     examples: dict[str, list[str]] = defaultdict(list)
     closed = blank = unreadable = 0
+    fail_reasons: Counter = Counter()
+    fail_examples: list[str] = []
     out = []
-    for r in rows:
+    for idx, r in enumerate(rows):
         text, final_url, status = pages.get(r["source_url"], (None, None, None)) if uses_browser(BY_LABEL[r["platform"]]) else fetch_static_lines(r["source_url"])
         if text is None or (status and status >= 400) or (final_url and "/login" in final_url):
             unreadable += 1
+            # 왜 못 읽었는지: 응답 코드/최종 주소/앞쪽에서 읽힌 뒤 끊겼는지(순번)를 남긴다
+            fail_reasons[f"status={status} text_none={text is None} login={'/login' in (final_url or '')}"] += 1
+            if len(fail_examples) < 8:
+                fail_examples.append(f"- #{idx} {r['source_url']} status={status} final={(final_url or '-')[:70]}")
             continue
         lines = [ln.strip() for ln in re.split(r"[\r\n]+", text) if ln.strip()]
         if not lines:
@@ -279,6 +285,10 @@ def run(rows: list[dict], key: str) -> None:
     for name, c in crosstabs.items():
         lines_out += ["", f"### {name}", "", "| 사이트 | DB | 건수 |", "|---|---|---|"]
         lines_out += [f"| {a} | {b} | {n} |" for (a, b), n in c.most_common(30)]
+    if fail_reasons:
+        lines_out += ["", "### 읽기 실패 원인", "", "| 원인 | 건수 |", "|---|---|"]
+        lines_out += [f"| {k} | {n} |" for k, n in fail_reasons.most_common()]
+        lines_out += ["", *fail_examples]
     lines_out += ["", "### 어긋난 예시"]
     for k, v in sorted(examples.items()):
         lines_out += ["", f"**{k}**", *v]
@@ -355,6 +365,140 @@ def fix_categories(rows: list[dict], key: str, apply: bool) -> None:
         conn.close()
 
 
+def _read(r: dict, pages: dict) -> tuple[str | None, str | None, int | None]:
+    if uses_browser(BY_LABEL[r["platform"]]):
+        return pages.get(r["source_url"], (None, None, None))
+    time.sleep(0.2)
+    return fetch_static_lines(r["source_url"])
+
+
+def _emit(report: str) -> None:
+    print(report)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write(report + "\n")
+
+
+def close_gone(rows: list[dict], key: str, apply: bool) -> None:
+    """사이트 상세 페이지가 '마감/종료'를 직접 보여 주거나 404/410인 캠페인을 종료(is_active=false) 처리한다.
+    읽기 실패·로그인·빈 페이지는 *모르는 것*이라 건드리지 않는다. 기본은 미리보기."""
+    browser_rows = [r for r in rows if uses_browser(BY_LABEL[r["platform"]])]
+    pages = fetch_with_browser(browser_rows) if browser_rows else {}
+    gone: list[tuple[dict, str]] = []
+    unknown = blank = 0
+    for r in rows:
+        text, final_url, status = _read(r, pages)
+        if status in (404, 410):
+            gone.append((r, f"HTTP {status}"))
+            continue
+        if text is None or (status and status >= 400) or (final_url and "/login" in final_url):
+            unknown += 1
+            continue
+        lines = [ln.strip() for ln in re.split(r"[\r\n]+", text) if ln.strip()]
+        if not lines:
+            blank += 1
+            continue
+        facts = FACTS[key](lines) if key in FACTS else {}
+        if facts.get("period_label") == "마감":
+            gone.append((r, "모집 기간 표기가 '마감'"))
+            continue
+        m = CLOSED_RE.search(text)
+        if m:
+            around = re.sub(r"\s+", " ", text[max(0, m.start() - 30) : m.end() + 30])
+            gone.append((r, f"문구 '{m.group(0)}' … {around}"))
+    out = [f"## 사라진/마감 캠페인 종료 {'(적용)' if apply else '(미리보기 — DB 변경 없음)'}: {rows[0]['platform'] if rows else key}", "",
+           f"- 검사 {len(rows)}건 · 종료 대상 {len(gone)}건 · 모름(읽기 실패/로그인) {unknown} · 빈 페이지 {blank} (모르는 건은 건드리지 않음)", ""]
+    out += [f"- {r['title'][:30]} | {why} | {r['source_url']}" for r, why in gone]
+    _emit("\n".join(out))
+    if not apply or not gone:
+        if not apply:
+            print("\n(미리보기라 DB는 그대로입니다. 적용하려면 --apply)")
+        return
+    import psycopg2
+
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute("update public.campaigns set is_active = false where is_active and id = any(%s::uuid[])", ([r["id"] for r, _ in gone],))
+            print(f"\n{cur.rowcount}건 종료 처리 완료")
+    finally:
+        conn.close()
+
+
+def refresh_stale(rows: list[dict], key: str, apply: bool, stale_hours: int) -> None:
+    """수집 목록에서 한동안 안 보인 캠페인을 상세 페이지로 직접 갱신한다 (신청/모집 인원, 마감일).
+    목록에는 개수 한도가 있어서 오래된 캠페인은 수집이 갱신해 주지 못한다. 페이지가 열리고 '마감' 표시가 없으면
+    아직 진행 중으로 보고 last_seen_at도 지금으로 올린다. 마감 표시·읽기 실패는 건드리지 않는다. 기본은 미리보기."""
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=stale_hours)
+    targets = [r for r in rows if r["last_seen_at"] < cutoff]
+    browser_rows = [r for r in targets if uses_browser(BY_LABEL[r["platform"]])]
+    pages = fetch_with_browser(browser_rows) if browser_rows else {}
+    today = today_kst()
+    updates: list[tuple] = []
+    changed: Counter = Counter()
+    samples: list[str] = []
+    closed_found: list[str] = []
+    unreadable = 0
+    for r in targets:
+        text, final_url, status = _read(r, pages)
+        if text is None or (status and status >= 400) or (final_url and "/login" in final_url):
+            unreadable += 1
+            continue
+        lines = [ln.strip() for ln in re.split(r"[\r\n]+", text) if ln.strip()]
+        if not lines:
+            unreadable += 1
+            continue
+        f = FACTS[key](lines)
+        if CLOSED_RE.search(text) or f.get("period_label") == "마감":
+            closed_found.append(f"- {r['title'][:30]} | {r['source_url']}")
+            continue
+        applicant = f["applicant"] if f.get("applicant") is not None else r.get("applicant_count")
+        recruit = f["recruit"] if f.get("recruit") is not None else r.get("recruit_count")
+        deadline = today + timedelta(days=f["days_left"]) if f.get("days_left") is not None else r.get("deadline_date")
+        diffs = []
+        if applicant != r.get("applicant_count"):
+            changed["신청인원"] += 1
+            diffs.append(f"신청 {r.get('applicant_count')}→{applicant}")
+        if recruit != r.get("recruit_count"):
+            changed["모집인원"] += 1
+            diffs.append(f"모집 {r.get('recruit_count')}→{recruit}")
+        if deadline != r.get("deadline_date"):
+            changed["마감일"] += 1
+            diffs.append(f"마감 {r.get('deadline_date')}→{deadline}")
+        if diffs and len(samples) < 12:
+            samples.append(f"- {r['title'][:24]} | {', '.join(diffs)} | {r['source_url']}")
+        updates.append((r["id"], applicant, recruit, deadline))
+    out = [f"## 오래된 캠페인 갱신 {'(적용)' if apply else '(미리보기 — DB 변경 없음)'}: {rows[0]['platform'] if rows else key}", "",
+           f"- 전체 {len(rows)}건 중 최근 {stale_hours}시간 목록에 없던 {len(targets)}건 검사 · 갱신 가능 {len(updates)}건 · 읽기 실패 {unreadable} · 마감 표시 {len(closed_found)}건(건드리지 않음)",
+           f"- 바뀌는 값: {dict(changed)}", "", "### 바뀌는 예시", *samples]
+    if closed_found:
+        out += ["", "### 마감 표시가 있는 건 (종료 처리는 close-gone으로)", *closed_found[:15]]
+    _emit("\n".join(out))
+    if not apply or not updates:
+        if not apply:
+            print("\n(미리보기라 DB는 그대로입니다. 적용하려면 --apply)")
+        return
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        with conn, conn.cursor() as cur:
+            execute_values(
+                cur,
+                "update public.campaigns c set applicant_count = v.a, recruit_count = v.r, deadline_date = v.d, last_seen_at = now() "
+                "from (values %s) as v(id, a, r, d) where c.id = v.id and c.is_active",
+                updates,
+                template="(%s::uuid, %s::int, %s::int, %s::date)",
+            )
+            print(f"\n{cur.rowcount}건 갱신 완료")
+    finally:
+        conn.close()
+
+
 def drift_check(rows: list[dict], connector) -> None:
     """상세 페이지가 로그인 뒤에 있는 사이트용: 지금 목록을 다시 수집해 정제한 값과 DB 값을 비교한다.
     사이트 원본(목록 API)과 현재 정제 규칙 기준으로 DB가 얼마나 어긋났는지 본다 — 목록에 있는 캠페인만 해당."""
@@ -395,6 +539,10 @@ def main() -> None:
     parser.add_argument("--dump", action="store_true", help="표본 상세 페이지 글자를 출력만 한다")
     parser.add_argument("--lines", type=int, default=40)
     parser.add_argument("--urls", help="덤프할 상세 페이지 주소(쉼표 구분). 없으면 종류별 표본")
+    parser.add_argument("--close-gone", action="store_true", help="사이트가 마감/404로 보여 주는 캠페인을 종료한다 (기본은 미리보기)")
+    parser.add_argument("--refresh-stale", action="store_true", help="목록에서 빠진 캠페인의 신청/모집 인원·마감일을 상세 페이지로 갱신한다 (기본은 미리보기)")
+    parser.add_argument("--stale-hours", type=int, default=24)
+    parser.add_argument("--limit", type=int, default=0, help="앞쪽 N건만 (진단·시험용, 0=전부)")
     parser.add_argument("--fix-category", action="store_true", help="비어 있는 category_raw를 사이트 카테고리로 채운다 (기본은 미리보기)")
     parser.add_argument("--apply", action="store_true", help="--fix-category를 실제로 DB에 쓴다")
     parser.add_argument("--skip", type=int, default=0, help="앞쪽 메뉴·푸터를 건너뛸 줄 수")
@@ -407,6 +555,14 @@ def main() -> None:
         dump(rows, args.lines, args.skip, set(args.urls.split(",")) if args.urls else None)
         return
     key = connectors[0].key
+    if args.limit:
+        rows = rows[: args.limit]
+    if args.close_gone:
+        close_gone(rows, key, args.apply)
+        return
+    if args.refresh_stale:
+        refresh_stale(rows, key, args.apply, args.stale_hours)
+        return
     if args.fix_category:
         if key not in FACTS:
             raise SystemExit(f"{key}: 추출 규칙이 아직 없습니다")

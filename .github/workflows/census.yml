@@ -15,6 +15,17 @@ on:
       urls:
         description: "dump할 상세 페이지 주소(쉼표 구분, 선택)"
         default: ""
+      close_gone:
+        description: "사이트가 마감/404로 보여 주는 캠페인 종료 (apply 전에는 미리보기)"
+        type: boolean
+        default: false
+      refresh_stale:
+        description: "목록에서 빠진 캠페인의 인원·마감일을 상세 페이지로 갱신 (apply 전에는 미리보기)"
+        type: boolean
+        default: false
+      limit:
+        description: "앞쪽 N건만 (진단용, 0=전부)"
+        default: "0"
       fix_category:
         description: "비어 있는 category_raw를 사이트 카테고리로 채우기 (apply를 켜기 전에는 미리보기)"
         type: boolean
@@ -56,4 +67,13 @@ jobs:
             args="--fix-category"
             if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
           fi
+          if [ "${{ inputs.close_gone }}" = "true" ]; then
+            args="--close-gone"
+            if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
+          fi
+          if [ "${{ inputs.refresh_stale }}" = "true" ]; then
+            args="--refresh-stale"
+            if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
+          fi
+          if [ "${{ inputs.limit }}" != "0" ] && [ -n "${{ inputs.limit }}" ]; then args="$args --limit ${{ inputs.limit }}"; fi
           python census.py --only "${{ inputs.only }}" $args
