@@ -13,9 +13,9 @@ function multiLabel(fallback: string, items: string[], format: (v: string) => st
 
 function formatApplyRateLabel(range: FilterState["applyRate"]) {
   if (!range) return "경쟁률";
-  const min = Math.round(range.min * 100);
-  if (range.max === Infinity) return `경쟁률 ${min}%+`;
-  return `경쟁률 ${min}~${Math.round(range.max * 100)}%`;
+  const n = (v: number) => Math.round(v * 10) / 10;
+  if (range.max === Infinity) return `경쟁률 ${n(range.min)}:1+`;
+  return `경쟁률 ${n(range.min)}~${n(range.max)}:1`;
 }
 
 /** 검색창 아래 필터 줄: [필터 n] [★ 관심] [체험 방식] [지역] [카테고리] … */

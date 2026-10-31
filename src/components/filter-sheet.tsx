@@ -63,12 +63,12 @@ function clearSheetFilters(f: FilterState): FilterState {
   return { ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded, favoritesOnly: f.favoritesOnly };
 }
 
-// 지원률 슬라이더 범위: 0~200%. 오른쪽 끝(2)에 두면 "200% 이상"까지 무제한으로 연다.
-const APPLY_RATE_SLIDER_MAX = 2;
+// 경쟁률(신청 ÷ 모집) 슬라이더 범위: 0~10:1. 오른쪽 끝에 두면 "10:1 이상"까지 무제한으로 연다.
+const APPLY_RATE_SLIDER_MAX = 10;
 const APPLY_RATE_PRESETS: { label: string; range: ApplyRateRange }[] = [
-  { label: "여유 (30% 미만)", range: { min: 0, max: 0.3 } },
-  { label: "보통 (30~100%)", range: { min: 0.3, max: 1 } },
-  { label: "치열 (100% 이상)", range: { min: 1, max: Infinity } },
+  { label: "여유 (1:1 미만)", range: { min: 0, max: 1 } },
+  { label: "보통 (1~5:1)", range: { min: 1, max: 5 } },
+  { label: "치열 (5:1 이상)", range: { min: 5, max: Infinity } },
 ];
 
 function scrollToSection(id: FilterSection, behavior: ScrollBehavior) {
@@ -76,7 +76,8 @@ function scrollToSection(id: FilterSection, behavior: ScrollBehavior) {
 }
 
 function formatRate(value: number) {
-  return value >= APPLY_RATE_SLIDER_MAX ? `${Math.round(value * 100)}%+` : `${Math.round(value * 100)}%`;
+  const text = `${Math.round(value * 10) / 10}:1`;
+  return value >= APPLY_RATE_SLIDER_MAX ? `${text}+` : text;
 }
 
 const SECTION_TITLES: Record<FilterSection, string> = {
@@ -290,7 +291,7 @@ export function FilterSheet({
             </button>
           </Section>
 
-          <Section {...sectionProps("applyRate")} hint="신청자 ÷ 모집인원">
+          <Section {...sectionProps("applyRate")} hint="모집 1명당 신청자 수">
             <div className="flex flex-col gap-4">
               <ChipGroup>
                 {APPLY_RATE_PRESETS.map((preset) => {
@@ -317,7 +318,7 @@ export function FilterSheet({
                 <Slider
                   min={0}
                   max={APPLY_RATE_SLIDER_MAX}
-                  step={0.05}
+                  step={0.5}
                   minStepsBetweenValues={1}
                   value={sliderValue}
                   onValueChange={(next) => {

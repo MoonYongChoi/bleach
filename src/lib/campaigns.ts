@@ -252,6 +252,13 @@ export function applyRate(campaign: Pick<Campaign, "recruit_count" | "applicant_
   return campaign.applicant_count / campaign.recruit_count;
 }
 
+/** 경쟁률 표기: 1 미만은 자리가 남는다는 뜻이라 "여유", 그 외는 "3.2:1". */
+export function formatCompetition(rate: number | null): string | null {
+  if (rate === null) return null;
+  if (rate < 1) return "여유";
+  return `${rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10}:1`;
+}
+
 /** 오늘 날짜 "YYYY-MM-DD" — 보는 사람 기기의 시간대와 상관없이 한국 시간 기준 */
 export function todayKst(): string {
   // en-CA 로케일은 YYYY-MM-DD 형식으로 날짜를 준다

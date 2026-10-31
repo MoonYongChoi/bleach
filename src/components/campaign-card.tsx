@@ -4,8 +4,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Thumbnail } from "@/components/thumbnail";
 import {
   type Campaign,
+  applyRate,
   CAMPAIGN_TYPE_LABELS,
   dDay,
+  formatCompetition,
   REVIEW_CHANNEL_LABELS,
 } from "@/lib/campaigns";
 import { cn } from "cn";
@@ -40,11 +42,12 @@ export function CampaignCard({
   const typeLabel = campaign.campaign_type ? CAMPAIGN_TYPE_LABELS[campaign.campaign_type]?.label : undefined;
   const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
   const channels = campaign.review_channels.map((c) => REVIEW_CHANNEL_LABELS[c] ?? c);
+  const competition = formatCompetition(applyRate(campaign));
   const metaParts = [
     region || null,
     campaign.deadline_date ? `~${campaign.deadline_date.slice(5).replace("-", ".")} 모집` : null,
     campaign.recruit_count !== null
-      ? `신청 ${campaign.applicant_count ?? "?"} / 모집 ${campaign.recruit_count}명`
+      ? `${competition ? `경쟁 ${competition} · ` : ""}신청 ${campaign.applicant_count ?? "?"} / 모집 ${campaign.recruit_count}명`
       : null,
   ].filter(Boolean);
 
