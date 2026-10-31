@@ -100,6 +100,8 @@ class RevuConnector(Connector):
     label = "레뷰"
     base_url = BASE_URL
     needs_browser = True
+    # 닫힌 캠페인은 404가 아니라 글자 0자의 빈 페이지로 열린다 (2026-10-31 검수에서 12건 중 3건)
+    empty_page_means_closed = True
     required_env = ("REVU_ID", "REVU_PW")
     # /category/{제품,지역} 페이지 이름이 곧 유형이다.
     type_hints = {"제품": "배송", "지역": "방문"}

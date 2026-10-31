@@ -108,6 +108,8 @@ class Connector:
     needs_browser: ClassVar[bool] = False  # Playwright 필요 여부 (수집에)
     # 수집은 requests로 되지만 상세 페이지는 JS로 그려져서 검수에는 브라우저가 필요한 경우 (리뷰노트)
     verify_with_browser: ClassVar[bool] = False
+    # 닫힌/삭제된 캠페인 페이지가 404가 아니라 "빈 화면"으로 열리는 사이트 (레뷰 SPA) — reaper.py가 종료 판정에 쓴다
+    empty_page_means_closed: ClassVar[bool] = False
     # 브라우저로 열 때 쓸 User-Agent (기본 HeadlessChrome을 막는 사이트용)
     browser_user_agent: ClassVar[Optional[str]] = None
     required_env: ClassVar[tuple[str, ...]] = ()
