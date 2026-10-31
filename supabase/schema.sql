@@ -45,6 +45,10 @@ create table if not exists public.campaigns (
   is_active boolean not null default true,
   -- 수집 목록에서 마지막으로 확인된 시각 (loader.py가 upsert할 때만 갱신, 수동 수정에는 안 바뀜)
   last_seen_at timestamptz not null default now(),
+  -- 경쟁률(모집 1명당 신청자 수) — DB가 계산하는 generated 컬럼. 서버에서 필터·정렬·페이지 나누기용.
+  apply_rate numeric generated always as (
+    case when recruit_count > 0 and applicant_count is not null then applicant_count::numeric / recruit_count end
+  ) stored,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -55,6 +59,8 @@ create index if not exists campaigns_region_idx on public.campaigns (region_sido
 create index if not exists campaigns_category_idx on public.campaigns (category);
 create index if not exists campaigns_platform_idx on public.campaigns (platform);
 create index if not exists campaigns_last_seen_idx on public.campaigns (last_seen_at);
+create index if not exists campaigns_active_apply_rate_idx on public.campaigns (apply_rate) where is_active;
+create index if not exists campaigns_active_deadline_idx on public.campaigns (deadline_date) where is_active;
 create index if not exists campaigns_type_idx on public.campaigns (campaign_type);
 create index if not exists campaigns_guguns_idx on public.campaigns using gin (region_guguns);
 create index if not exists campaigns_channels_idx on public.campaigns using gin (review_channels);

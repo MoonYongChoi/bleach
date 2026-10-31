@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { QuickFilters, ResultsBar } from "@/components/quick-filters";
 import {
@@ -12,9 +12,12 @@ import {
 import { SortSheet } from "@/components/sort-sheet";
 import { PlatformRequestSheet } from "@/components/platform-request-sheet";
 import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import {
-  fetchCampaigns,
+  PAGE_SIZE,
+  countCampaigns,
+  fetchCampaignPage,
   fetchFilterOptions,
   type Campaign,
   type CampaignFilters,
@@ -54,7 +57,16 @@ export default function Home() {
     channels: [],
   });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // 무한 스크롤: 스크롤이 끝에 가까워지면 다음 묶음을 이어 붙인다
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
+  const nextPageRef = useRef(1);
+  // 조건(검색·필터)이 바뀔 때마다 올라간다 — 이전 조건의 늦은 응답이 새 목록을 덮어쓰지 못하게 버리는 용도
+  const generationRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   // 불러오기에 실패했을 때 "결과 없음"과 구분해서 보여주고, 다시 시도할 수 있게 한다
   const [loadError, setLoadError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
@@ -68,30 +80,87 @@ export default function Home() {
     fetchFilterOptions().then(setFilterOptions).catch(console.error);
   }, []);
 
+  const query = useMemo(
+    () => toQuery(search, filters, favoriteIdsForQuery ?? []),
+    [search, filters, favoriteIdsForQuery]
+  );
+
   useEffect(() => {
+    const generation = ++generationRef.current;
+    nextPageRef.current = 1;
+    window.scrollTo({ top: 0 });
     // Intentional: show the skeleton immediately on every filter/search change,
     // not just the initial mount, so results re-fetching reads as "loading" to the user.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true);
-    fetchCampaigns(toQuery(search, filters, favoriteIdsForQuery ?? []))
-      .then((rows) => {
+    setLoadMoreError(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    Promise.all([fetchCampaignPage(query, 0), countCampaigns(query)])
+      .then(([rows, count]) => {
+        if (generation !== generationRef.current) return;
         setCampaigns(rows);
+        setTotal(count);
+        setHasMore(rows.length >= PAGE_SIZE && rows.length < count);
         setLoadError(false);
       })
       .catch((e) => {
+        if (generation !== generationRef.current) return;
         console.error(e);
         setCampaigns([]);
+        setTotal(0);
+        setHasMore(false);
         setLoadError(true);
       })
       .finally(() => {
+        if (generation !== generationRef.current) return;
         setLoading(false);
         setTimeout(() => setIntro(false), 1600);
       });
-  }, [search, filters, favoriteIdsForQuery, retryKey]);
+  }, [query, retryKey]);
+
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || !hasMore) return;
+    const generation = generationRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    fetchCampaignPage(query, nextPageRef.current)
+      .then((rows) => {
+        if (generation !== generationRef.current) return;
+        nextPageRef.current += 1;
+        // 불러오는 사이 목록이 바뀌어 같은 캠페인이 두 번 올 수 있어 id로 걸러 붙인다
+        setCampaigns((prev) => {
+          const seen = new Set(prev.map((c) => c.id));
+          return [...prev, ...rows.filter((c) => !seen.has(c.id))];
+        });
+        setHasMore(rows.length >= PAGE_SIZE);
+      })
+      .catch((e) => {
+        if (generation !== generationRef.current) return;
+        console.error(e);
+        setLoadMoreError(true);
+      })
+      .finally(() => {
+        if (generation === generationRef.current) setLoadingMore(false);
+      });
+  }, [loading, loadingMore, hasMore, query]);
+
+  // 목록 맨 아래 눈에 안 보이는 표시가 화면 근처(600px 앞)에 오면 다음 묶음을 받는다.
+  // 묶음이 붙을 때마다 다시 관찰해서, 화면이 넓어 표시가 계속 보이는 경우에도 이어서 채운다.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loadMoreError) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { rootMargin: "600px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, loadMoreError, campaigns.length]);
 
   const countFor = useCallback(
-    (draft: FilterState) =>
-      fetchCampaigns(toQuery(search, draft, favorites.ids)).then((rows) => rows.length),
+    (draft: FilterState) => countCampaigns(toQuery(search, draft, favorites.ids)),
     [search, favorites.ids]
   );
 
@@ -120,7 +189,7 @@ export default function Home() {
           )}
         </div>
         <ResultsBar
-          total={campaigns.length}
+          total={total}
           loading={loading || loadError}
           value={filters}
           onOpenSort={() => setSortOpen(true)}
@@ -157,7 +226,28 @@ export default function Home() {
                 onToggleFavorite={() => favorites.toggle(campaign.id)}
               />
             ))}
+            {loadingMore && [0, 1].map((i) => <CampaignCardSkeleton key={`more-${i}`} />)}
           </ul>
+        )}
+
+        {/* 무한 스크롤 끝 표시: 다음 묶음이 있으면 눈에 안 보이는 감시 칸, 실패하면 다시 시도, 다 불러왔으면 마무리 문구 */}
+        {!loading && !loadError && campaigns.length > 0 && (
+          <>
+            {hasMore && !loadMoreError && <div ref={sentinelRef} className="h-px" aria-hidden />}
+            {loadMoreError && (
+              <div className="flex flex-col items-center gap-2 px-4 py-6 text-center" role="alert">
+                <p className="text-sm text-muted-foreground">다음 체험단을 불러오지 못했어요.</p>
+                <Button variant="outline" size="sm" onClick={loadMore}>
+                  다시 시도
+                </Button>
+              </div>
+            )}
+            {!hasMore && (
+              <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+                마지막까지 봤어요 · 총 <b className="font-display font-bold tabular-nums text-foreground">{total.toLocaleString()}</b>개
+              </p>
+            )}
+          </>
         )}
 
         {!loading && !loadError && (
