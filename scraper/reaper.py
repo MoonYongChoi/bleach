@@ -59,9 +59,9 @@ def load_stale_rows(labels: list[str], stale_hours: int, per: int) -> list[dict]
             rows: list[dict] = []
             for label in labels:
                 cur.execute(
-                    "select id, platform, title, source_url, deadline_date, updated_at from public.campaigns "
-                    "where is_active and platform = %s and updated_at < now() - make_interval(hours => %s) "
-                    + ("order by random() limit %s" if per > 0 else "order by updated_at"),
+                    "select id, platform, title, source_url, deadline_date, last_seen_at from public.campaigns "
+                    "where is_active and platform = %s and last_seen_at < now() - make_interval(hours => %s) "
+                    + ("order by random() limit %s" if per > 0 else "order by last_seen_at"),
                     (label, stale_hours, per) if per > 0 else (label, stale_hours),
                 )
                 rows += cur.fetchall()

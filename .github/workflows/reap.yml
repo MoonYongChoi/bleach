@@ -2,8 +2,11 @@ name: End campaigns that left the source sites
 
 # 수집 목록에서 한동안 안 보인 캠페인의 자기 페이지를 열어서, 닫혔거나 사라졌으면 종료(is_active=false) 처리한다
 # (scraper/reaper.py). 수동 실행은 기본이 미리보기이고, apply를 켜야 DB가 바뀐다.
+# 매일 새벽 04:30(KST)에는 자동으로 실제 종료 처리까지 한다 (수집 03:30 직후, cron은 UTC라 19:30).
 
 on:
+  schedule:
+    - cron: "30 19 * * *"
   workflow_dispatch:
     inputs:
       apply:
@@ -44,5 +47,5 @@ jobs:
         run: |
           args="--stale-hours ${{ inputs.stale_hours || '24' }} --per ${{ inputs.per || '0' }}"
           if [ -n "${{ inputs.only }}" ]; then args="$args --only ${{ inputs.only }}"; fi
-          if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi
           python reaper.py $args

@@ -36,7 +36,8 @@ on conflict (source_url) do update set
     vendor = excluded.vendor,
     recruit_count = excluded.recruit_count,
     applicant_count = excluded.applicant_count,
-    is_active = excluded.is_active;
+    is_active = excluded.is_active,
+    last_seen_at = now();
 """
 
 # 이번 수집에서 다시 보이지 않았더라도 마감일이 지난 건 내린다 (KST 기준 오늘 이전).

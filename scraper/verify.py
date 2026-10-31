@@ -243,7 +243,7 @@ def audit_images(rows: list[dict]) -> None:
             continue
         status, digest, size = _image_probe(url)
         ok = status.startswith("200 image/")
-        stale = row["updated_at"] < stale_before
+        stale = row["last_seen_at"] < stale_before
         stats[row["platform"]][("열림" if ok else "안 열림") + (" · 목록에서 안 보임" if stale else " · 최근 수집")] += 1
         if digest:
             hashes[(row["platform"], digest)].append(row)
