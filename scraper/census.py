@@ -10,7 +10,9 @@ verify.py가 "DB 값이 페이지 글자 안에 있는가"만 보는 것과 달�
 from __future__ import annotations
 
 import argparse
+import os
 import re
+from datetime import date
 from collections import defaultdict
 
 import requests
@@ -72,6 +74,194 @@ def dump(rows: list[dict], lines: int, skip: int = 0) -> None:
             print(f"  {i:3d} | {ln[:150]}")
 
 
+
+# ---------------------------------------------------------------------------
+# 전수 대조: 사이트 상세 페이지의 라벨 → facts → DB 값과 비교
+# ---------------------------------------------------------------------------
+from collections import Counter
+
+from normalize import CATEGORY_ALIASES, GENERIC_RAW_CATEGORIES, STANDARD_CATEGORIES, today_kst
+from verify import CLOSED_RE
+
+CHANNEL_TOKENS = [("릴스", "reels"), ("쇼츠", "shorts"), ("숏츠", "shorts"), ("클립", "clip"),
+                  ("유튜브", "youtube"), ("틱톡", "tiktok"), ("블로그", "blog"), ("인스타", "instagram")]
+SITE_TYPE_TO_DB = {"방문": "방문", "배송": "배송", "페이백": "구매", "구매": "구매", "기자단": "기자단"}
+DQ_CATEGORY_BADGES = {"맛집", "뷰티", "배송", "기타", "기자단", "여가", "맞춤"}
+
+
+def channels_in(text: str) -> set[str]:
+    found = {code for word, code in CHANNEL_TOKENS if word in text}
+    if "reels" in found:
+        found.discard("instagram")  # "인스타 릴스"는 릴스 하나다
+    return found
+
+
+def _num(value: str | None) -> int | None:
+    return int(value.replace(",", "")) if value and value.replace(",", "").isdigit() else None
+
+
+def facts_dinnerqueen(lines: list[str]) -> dict:
+    text = "\n".join(lines)
+    f: dict = {}
+    sentence = next((ln for ln in lines if ln.endswith("캠페인이에요")), None)
+    if sentence:
+        body = sentence[: -len("캠페인이에요")].strip()
+        f["type_label"] = body.split()[-1] if body.split() else None
+        f["channels"] = channels_in(body)
+    f["category_label"] = next((ln for ln in lines[:25] if ln in DQ_CATEGORY_BADGES), None)
+    m = re.search(r"(\d[\d,]*)\s*/\s*(\d[\d,]*)\s*명", text)
+    if m:
+        f["applicant"], f["recruit"] = _num(m.group(1)), _num(m.group(2))
+    m = re.search(r"신청 기간이\s*(\d+)\s*일\s*남았어요", text)
+    f["days_left"] = int(m.group(1)) if m else (0 if "오늘" in text and "마감" in text else None)
+    title = next((ln for ln in lines if ln.startswith("[")), "")
+    brackets = re.findall(r"\[([^\]]+)\]", title)
+    region = next((b for b in brackets if not channels_in(b) and b not in ("프리미엄", "페이백", "포장")), None)
+    f["region_label"] = region.split()[0] if region else None
+    return f
+
+
+def facts_revu(lines: list[str]) -> dict:
+    text = "\n".join(lines)
+    f: dict = {}
+    mission = ""
+    if "캠페인 미션" in lines:
+        i = lines.index("캠페인 미션")
+        mission = "\n".join(lines[i : i + 8])
+    notice = "\n".join(ln for ln in lines if "캠페인입니다" in ln or "업로드" in ln and "릴스" in ln)
+    f["channels"] = channels_in(mission + "\n" + notice)
+    addr = next((ln for ln in lines if ln.endswith("주소 복사")), None)
+    if addr:
+        parts = addr.split()
+        f["region_label"] = " ".join(parts[:2])
+        f["type_label"] = "방문"
+    f["blank"] = not text.strip()
+    return f
+
+
+def facts_modublog(lines: list[str]) -> dict:
+    f: dict = {}
+    if "포인트 충전소" in lines:
+        i = lines.index("포인트 충전소")
+        f["type_label"] = lines[i + 2] if i + 2 < len(lines) else None
+    def after(label: str) -> str | None:
+        return lines[lines.index(label) + 1] if label in lines and lines.index(label) + 1 < len(lines) else None
+    f["period_label"] = after("모집 기간")
+    f["recruit"] = _num(re.sub(r"\D", "", after("모집 인원") or ""))
+    f["applicant"] = _num(re.sub(r"\D", "", after("신청 인원") or ""))
+    m = re.search(r"(\d+)\s*일\s*남음", f["period_label"] or "")
+    f["days_left"] = int(m.group(1)) if m else None
+    return f
+
+
+FACTS = {"dinnerqueen": facts_dinnerqueen, "revu": facts_revu, "modublog": facts_modublog}
+
+
+def _category_ok(site_label: str | None, db_category: str | None) -> bool | None:
+    """None = 판단 불가(사이트 값이 범용 이름이거나 없음)."""
+    if not site_label or site_label in GENERIC_RAW_CATEGORIES:
+        return None
+    std = CATEGORY_ALIASES.get(site_label) or (site_label if site_label in STANDARD_CATEGORIES else None)
+    if std is None:
+        return None
+    if db_category == std:
+        return True
+    # normalize가 의도적으로 바꾸는 경우: 맛집↔카페, 배송형 음식은 식품·배송
+    return std in ("맛집", "카페·디저트") and db_category in ("맛집", "카페·디저트", "식품·배송")
+
+
+def compare(row: dict, f: dict, today) -> dict[str, str]:
+    res: dict[str, str] = {}
+    label = f.get("type_label")
+    if label:
+        expected = SITE_TYPE_TO_DB.get(label)
+        res["type"] = "unmapped" if expected is None else ("ok" if expected == row.get("campaign_type") else "mismatch")
+    if f.get("channels") is not None and f["channels"]:
+        db = set(row.get("review_channels") or [])
+        res["channel"] = "ok" if db == f["channels"] else ("db_empty" if not db else "mismatch")
+    elif "channels" in f:
+        res["channel"] = "site_none"
+    ok = _category_ok(f.get("category_label"), row.get("category"))
+    if ok is not None:
+        res["category"] = "ok" if ok else "mismatch"
+    if f.get("recruit") is not None and row.get("recruit_count") is not None:
+        res["recruit"] = "ok" if f["recruit"] == row["recruit_count"] else "mismatch"
+    if f.get("applicant") is not None and row.get("applicant_count") is not None:
+        res["applicant"] = "ok" if f["applicant"] == row["applicant_count"] else "changed"
+    if f.get("days_left") is not None and row.get("deadline_date"):
+        d = row["deadline_date"]
+        d = date.fromisoformat(d) if isinstance(d, str) else d
+        res["deadline"] = "ok" if abs((d - today).days - f["days_left"]) <= 1 else "mismatch"
+    region = f.get("region_label")
+    if region and region != "전국":
+        sido = row.get("region_sido") or ""
+        gugun_names = " ".join(row.get("region_guguns") or [])
+        res["region"] = "ok" if (region[:2] in sido or sido[:2] in region or region.split()[0][:2] in gugun_names) else "mismatch"
+    return res
+
+
+def run(rows: list[dict], key: str) -> None:
+    import csv
+
+    today = today_kst()
+    extract = FACTS[key]
+    browser_rows = [r for r in rows if uses_browser(BY_LABEL[r["platform"]])]
+    pages = fetch_with_browser(browser_rows) if browser_rows else {}
+    verdicts: dict[str, Counter] = defaultdict(Counter)
+    crosstabs: dict[str, Counter] = defaultdict(Counter)
+    examples: dict[str, list[str]] = defaultdict(list)
+    closed = blank = unreadable = 0
+    out = []
+    for r in rows:
+        text, final_url, status = pages.get(r["source_url"], (None, None, None)) if uses_browser(BY_LABEL[r["platform"]]) else fetch_static_lines(r["source_url"])
+        if text is None or (status and status >= 400) or (final_url and "/login" in final_url):
+            unreadable += 1
+            continue
+        lines = [ln.strip() for ln in re.split(r"[\r\n]+", text) if ln.strip()]
+        if not lines:
+            blank += 1
+            continue
+        if CLOSED_RE.search(text):
+            closed += 1
+        f = extract(lines)
+        res = compare(r, f, today)
+        for field, v in res.items():
+            verdicts[field][v] += 1
+            if v in ("mismatch", "db_empty") and len(examples[f"{field}:{v}"]) < 6:
+                site = {"type": f.get("type_label"), "channel": sorted(f.get("channels") or []), "category": f.get("category_label"),
+                        "recruit": f.get("recruit"), "deadline": f.get("days_left"), "region": f.get("region_label")}.get(field)
+                dbv = {"type": r.get("campaign_type"), "channel": r.get("review_channels"), "category": r.get("category"),
+                       "recruit": r.get("recruit_count"), "deadline": str(r.get("deadline_date")), "region": f"{r.get('region_sido')}/{r.get('region_gugun')}"}.get(field)
+                examples[f"{field}:{v}"].append(f"- {r['title'][:28]} | 사이트: {site} | DB: {dbv} | {r['source_url']}")
+        crosstabs["체험종류 (사이트 → DB)"][(f.get("type_label"), r.get("campaign_type"))] += 1
+        crosstabs["채널 (사이트 → DB)"][(",".join(sorted(f.get("channels") or [])) or "-", ",".join(sorted(r.get("review_channels") or [])) or "-")] += 1
+        if "category_label" in f:
+            crosstabs["카테고리 (사이트 → DB)"][(f.get("category_label"), r.get("category"))] += 1
+        if "period_label" in f and not f.get("days_left"):
+            crosstabs["모집기간 표기 (사이트 → DB 마감일 유무)"][(f.get("period_label"), "있음" if r.get("deadline_date") else "없음")] += 1
+        out.append([r["platform"], r["title"], r["source_url"], *(f"{k}={v}" for k, v in res.items())])
+
+    lines_out = [f"## 전수 대조: {rows[0]['platform']} (활성 {len(rows)}건)", "",
+                 f"- 페이지 읽음 {len(rows) - unreadable - blank}건 · 읽기 실패/로그인 {unreadable} · 빈 페이지 {blank} · 마감 문구 {closed}", "",
+                 "| 항목 | " + " | ".join(["ok", "mismatch", "changed", "db_empty", "unmapped", "site_none"]) + " |", "|---|---|---|---|---|---|---|"]
+    for field, c in sorted(verdicts.items()):
+        lines_out.append(f"| {field} | " + " | ".join(str(c.get(k, 0)) for k in ["ok", "mismatch", "changed", "db_empty", "unmapped", "site_none"]) + " |")
+    for name, c in crosstabs.items():
+        lines_out += ["", f"### {name}", "", "| 사이트 | DB | 건수 |", "|---|---|---|"]
+        lines_out += [f"| {a} | {b} | {n} |" for (a, b), n in c.most_common(30)]
+    lines_out += ["", "### 어긋난 예시"]
+    for k, v in sorted(examples.items()):
+        lines_out += ["", f"**{k}**", *v]
+    report = "\n".join(lines_out)
+    print(report)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write(report + "\n")
+    with open("census_result.csv", "w", newline="", encoding="utf-8-sig") as fh:
+        csv.writer(fh).writerows([["platform", "title", "source_url", "verdicts..."], *out])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
@@ -86,7 +276,10 @@ def main() -> None:
     if args.dump:
         dump(rows, args.lines, args.skip)
         return
-    raise SystemExit("전수 대조는 사이트별 추출 규칙을 만든 뒤에 켭니다 (--dump 결과 확인 필요)")
+    key = connectors[0].key
+    if key not in FACTS:
+        raise SystemExit(f"{key}: 추출 규칙이 아직 없습니다")
+    run(rows, key)
 
 
 if __name__ == "__main__":
