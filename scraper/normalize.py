@@ -73,7 +73,7 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "과자", "크런치", "먹거리", "연어",
         "식품", "간식", "샐러드", "밀키트", "도시락", "음료", "주스", "즙", "건강식품",
         "영양제", "비타민", "유산균", "단백질", "프로틴", "김치", "반찬", "과일", "쌀",
-        "소스", "견과", "젤리", "티백", "닭가슴살", "1팩", "2팩", "3팩", "1박스",
+        "소스", "견과", "젤리", "티백", "닭가슴살", "1팩", "2팩", "3팩", "1박스", "떡",
     ),
     "디지털": (
         "전자랜드", "전자", "휴대폰", "인터넷", "TV", "베스트샵",
@@ -252,22 +252,28 @@ def normalize_channels(
     return [c for c in REVIEW_CHANNELS if c in found], title
 
 
-def _keyword_category(text: str) -> Optional[str]:
+def _keyword_category(text: str, prefer: Optional[str] = None) -> Optional[str]:
+    """제목+제공내역 키워드로 카테고리 추정. 점수가 같으면 prefer(있으면)를, 아니면 CATEGORY_KEYWORDS 순서를 따른다."""
     scores: dict[str, int] = {}
+    # "1박스"(물건 한 상자)는 숙박 "1박"이 아니다
+    stay_text = text.replace("박스", "")
     for label, keywords in CATEGORY_KEYWORDS.items():
-        hits = sum(1 for kw in keywords if kw in text)
+        target = stay_text if label == "여행·숙박" else text
+        hits = sum(1 for kw in keywords if kw in target)
         if hits:
             scores[label] = hits
     if not scores:
         return None
     best = max(scores.values())
-    return next(label for label in CATEGORY_KEYWORDS if scores.get(label) == best)
+    tied = [label for label in CATEGORY_KEYWORDS if scores.get(label) == best]
+    return prefer if prefer in tied else tied[0]
 
 
 def normalize_category(raw_category: Optional[str], title: str, description: Optional[str], campaign_type: str) -> Optional[str]:
     raw = clean_text(raw_category)
     text = f" {title} {description or ''} "
-    inferred = _keyword_category(text)
+    # 집으로 받는 제품은 점수가 같으면 식품·배송으로 (예: "크림떡"을 뷰티 "크림"으로 읽지 않게)
+    inferred = _keyword_category(text, prefer="식품·배송" if campaign_type == "배송" else None)
 
     mapped = None
     if raw and raw not in GENERIC_RAW_CATEGORIES:

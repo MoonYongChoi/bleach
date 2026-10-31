@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from connectors import BY_LABEL, REGISTRY  # noqa: E402
 from connectors.base import RawCampaign  # noqa: E402
-from normalize import normalize_all, normalize_campaign, normalize_for  # noqa: E402
+from normalize import normalize_category, normalize_all, normalize_campaign, normalize_for  # noqa: E402
 from regions import resolve_region  # noqa: E402
 
 TODAY = date(2026, 10, 28)
@@ -317,6 +317,21 @@ class GenericTest(unittest.TestCase):
         self.assertEqual(resolve_region("서울 중구"), ("서울", "중구"))
         self.assertEqual(resolve_region("서울특별시 마포구"), ("서울", "마포구"))
         self.assertEqual(resolve_region("배송"), (None, None))
+
+
+class BoxCategoryTest(unittest.TestCase):
+    """2026-10-31 디너의여왕 대조에서 나온 오분류: 배송 상품 "1박스"가 숙박, "크림떡"이 뷰티로 들어갔다."""
+
+    def test_box_is_not_a_stay(self):
+        self.assertEqual(normalize_category("배송", "누코스 콜라겐", "누코스 콜라겐 1박스 (10병)", "배송"), "식품·배송")
+        self.assertEqual(normalize_category("배송", "콩물두유", "콩물두유 1박스", "배송"), "식품·배송")
+
+    def test_food_wins_ties_for_delivered_goods(self):
+        self.assertEqual(normalize_category("배송", "카이막 크림떡", "-1개", "배송"), "식품·배송")
+
+    def test_real_beauty_and_stays_still_work(self):
+        self.assertEqual(normalize_category("배송", "어니언 버블 토너 100ml", "", "배송"), "뷰티")
+        self.assertEqual(normalize_category("여행", "가평 풀빌라 1박 2일", "", "방문"), "여행·숙박")
 
 
 if __name__ == "__main__":
