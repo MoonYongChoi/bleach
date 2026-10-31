@@ -12,6 +12,10 @@ on:
       only:
         description: "일부 커넥터만 (예: reviewnote,pavlovu). 비우면 전부"
         default: ""
+      images_only:
+        description: "썸네일 이미지만 점검"
+        type: boolean
+        default: false
   schedule:
     # 매주 월요일 10:15 KST (cron은 UTC 기준이라 01:15)
     - cron: "15 1 * * 1"
@@ -43,6 +47,7 @@ jobs:
         run: |
           args=""
           if [ -n "${{ inputs.only }}" ]; then args="--only ${{ inputs.only }}"; fi
+          if [ "${{ inputs.images_only }}" = "true" ]; then args="$args --images-only"; fi
           python verify.py --per "${{ inputs.per || '0' }}" $args
 
       - name: Upload per-campaign results

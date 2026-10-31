@@ -1,6 +1,7 @@
 import { StarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Thumbnail } from "@/components/thumbnail";
 import {
   type Campaign,
   CAMPAIGN_TYPE_LABELS,
@@ -55,16 +56,7 @@ export function CampaignCard({
         rel="noopener noreferrer"
         className="flex min-w-0 flex-1 gap-3 p-4 pr-1"
       >
-        {campaign.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet
-          <img
-            src={campaign.image_url}
-            alt=""
-            className="size-16 shrink-0 rounded-xl object-cover"
-          />
-        ) : (
-          <div className="size-16 shrink-0 rounded-xl bg-muted" />
-        )}
+        <Thumbnail key={campaign.image_url ?? campaign.id} src={campaign.image_url} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">

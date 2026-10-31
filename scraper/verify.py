@@ -213,6 +213,57 @@ def _fetch_pages(page, rows: list[dict], pages: dict) -> None:
             pages[row["source_url"]] = (None, None, None)
 
 
+def _image_probe(url: str) -> tuple[str, str | None, int]:
+    """(상태, 앞 16KB의 해시, 받은 바이트). 같은 해시가 여러 캠페인에 나오면 "이미지 없음" 대체 그림일 가능성이 높다."""
+    import hashlib
+
+    headers = {"User-Agent": BROWSER_UA, "Referer": "https://bleach-zeta-beryl.vercel.app/"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15, stream=True)
+        ctype = resp.headers.get("content-type", "-").split(";")[0]
+        chunk = next(resp.iter_content(16384), b"")
+        resp.close()
+        return f"{resp.status_code} {ctype}", hashlib.sha1(chunk).hexdigest()[:10], len(chunk)
+    except requests.RequestException as e:
+        return f"오류 {type(e).__name__}", None, 0
+
+
+def audit_images(rows: list[dict]) -> None:
+    """활성 캠페인 썸네일을 전부 열어서, 안 열리는 것과 수집 목록에서 한동안 안 보인 캠페인의 관계를 본다."""
+    from datetime import datetime, timedelta, timezone
+
+    stale_before = datetime.now(timezone.utc) - timedelta(hours=24)
+    stats: dict[str, Counter] = defaultdict(Counter)
+    hashes: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    bad: list[str] = []
+    for row in rows:
+        url = row.get("image_url")
+        if not url:
+            stats[row["platform"]]["이미지 주소 없음"] += 1
+            continue
+        status, digest, size = _image_probe(url)
+        ok = status.startswith("200 image/")
+        stale = row["updated_at"] < stale_before
+        stats[row["platform"]][("열림" if ok else "안 열림") + (" · 목록에서 안 보임" if stale else " · 최근 수집")] += 1
+        if digest:
+            hashes[(row["platform"], digest)].append(row)
+        if not ok and len([b for b in bad if b.startswith(f"[{row['platform']}]")]) < 6:
+            bad.append(f"[{row['platform']}] {status} | {row['title'][:25]} | {url}")
+        time.sleep(0.1)
+
+    print("## 썸네일 점검\n")
+    for platform, counter in sorted(stats.items()):
+        print(f"- {platform}: " + ", ".join(f"{k} {v}" for k, v in sorted(counter.items())))
+    repeated = [(k, v) for k, v in hashes.items() if len(v) >= 3]
+    print("\n### 같은 그림이 3개 이상 캠페인에 쓰인 경우 (대체 그림 의심)")
+    for (platform, digest), items in sorted(repeated, key=lambda x: -len(x[1]))[:8]:
+        print(f"- [{platform}] 해시 {digest}: {len(items)}건, 예: {items[0]['title'][:25]} {items[0]['image_url']}")
+    if not repeated:
+        print("- 없음")
+    print("\n### 안 열린 이미지 예시")
+    print("\n".join(f"- {b}" for b in bad) or "- 없음")
+
+
 def sample_rows(platform_labels: list[str], per: int) -> list[dict]:
     import psycopg2
     import psycopg2.extras
@@ -311,11 +362,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--per", type=int, default=0, help="플랫폼별 표본 수 (0 = 전수)")
     parser.add_argument("--csv", default="verify_result.csv", help="캠페인별 판정 결과 CSV 경로")
+    parser.add_argument("--images-only", action="store_true", help="썸네일만 점검 (페이지 대조는 안 함)")
     parser.add_argument("--only", help=f"쉼표로 구분한 커넥터 키 ({', '.join(BY_KEY)})")
     args = parser.parse_args()
 
     connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
     rows = sample_rows([c.label for c in connectors], args.per)
+    if args.images_only:
+        audit_images(rows)
+        return
 
     results: list[tuple[dict, dict[str, str]]] = []
     diagnostics: list[str] = []
