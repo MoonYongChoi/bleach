@@ -8,7 +8,11 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+  --color-mint: var(--mint);
+  --color-coral: var(--coral);
+  --color-sun: var(--sun);
+  --color-mist: var(--mist);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -49,30 +53,36 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #09695f;
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* 정체성: "빨래 푸르름" — 흰 빨래를 더 희게 보이게 하는 푸른 기운 한 방울.
+     차가운 흰 바탕 + 짙은 남색 잉크 + 푸른 포인트 하나. 경쟁률만 의미색(민트/코랄)을 쓴다. */
+  --background: #f3f5fa;
+  --foreground: #0b1530;
+  --card: #ffffff;
+  --card-foreground: #0b1530;
+  --popover: #ffffff;
+  --popover-foreground: #0b1530;
+  --primary: #2b47f0;
+  --primary-foreground: #ffffff;
+  --secondary: #eceff7;
+  --secondary-foreground: #0b1530;
+  --muted: #eceff7;
+  --muted-foreground: #5a6477;
+  --accent: #eceff7;
+  --accent-foreground: #0b1530;
+  --destructive: #d93a1b;
+  --border: #e3e7f0;
+  --input: #dfe3ee;
+  --ring: #2b47f0;
+  --mint: #087f5f;
+  --coral: #d93a1b;
+  --sun: #f5a623;
+  --mist: #e3e7f0;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -90,7 +100,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #0e8e82;
+  --primary: #6b82ff;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -127,4 +137,47 @@
   html {
     @apply font-sans;
   }
+}
+
+/* ---- 움직임 ---------------------------------------------------------------
+   첫 화면에서 목록이 한 번 올라오는 것 하나만 "저절로" 움직이고, 나머지는 누르는 순간에만 반응한다. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes star-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35) rotate(-12deg); }
+  70% { transform: scale(0.92) rotate(4deg); }
+  100% { transform: scale(1); }
+}
+@keyframes gauge-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+@keyframes badge-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.row-rise {
+  animation: rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.star-pop { animation: star-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.gauge-fill { transform-origin: left center; animation: gauge-fill 700ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both; }
+.badge-pop { animation: badge-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.shimmer {
+  background-image: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.7) 50%, transparent 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-rise, .star-pop, .gauge-fill, .badge-pop, .shimmer { animation: none; }
+  * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }

@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import { Noto_Sans_KR, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Sans_KR, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 
-const notoSansKr = Noto_Sans_KR({
+// 본문: 한글 가독성이 좋고 숫자가 단정한 IBM Plex Sans KR
+const plexKr = IBM_Plex_Sans_KR({
   variable: "--font-sans",
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// 로고와 숫자(경쟁률·D-day)에만 쓰는 디스플레이 글꼴
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-display",
   subsets: ["latin"],
 });
 
@@ -21,7 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ko"
-      className={`${notoSansKr.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plexKr.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

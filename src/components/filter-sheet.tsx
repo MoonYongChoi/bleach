@@ -75,9 +75,12 @@ function scrollToSection(id: FilterSection, behavior: ScrollBehavior) {
   document.getElementById(`filter-section-${id}`)?.scrollIntoView({ behavior, block: "start" });
 }
 
-function formatRate(value: number) {
-  const text = `${Math.round(value * 10) / 10}:1`;
-  return value >= APPLY_RATE_SLIDER_MAX ? `${text}+` : text;
+function formatRange(min: number, max: number) {
+  const n = (v: number) => Math.round(v * 10) / 10;
+  if (min <= 0 && max >= APPLY_RATE_SLIDER_MAX) return "전체";
+  if (min <= 0) return `${n(max)}:1 이하`;
+  if (max >= APPLY_RATE_SLIDER_MAX) return `${n(min)}:1 이상`;
+  return `${n(min)}~${n(max)}:1`;
 }
 
 const SECTION_TITLES: Record<FilterSection, string> = {
@@ -312,7 +315,7 @@ export function FilterSheet({
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>직접 범위 지정</span>
                   <span className="text-sm font-semibold tabular-nums text-foreground">
-                    {formatRate(sliderValue[0])} ~ {formatRate(sliderValue[1])}
+                    {formatRange(sliderValue[0], sliderValue[1])}
                   </span>
                 </div>
                 <Slider
@@ -498,7 +501,7 @@ function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex items-center rounded-full border border-border bg-background text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex items-center rounded-full border border-border bg-card text-foreground transition-[background-color,border-color,color,transform] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95",
         small ? "px-3 py-1 text-[13px]" : "px-3.5 py-1.5 text-sm",
         active && "border-primary bg-primary/10 font-medium text-primary"
       )}
@@ -524,7 +527,7 @@ function OptionCard({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-col items-start gap-0.5 rounded-xl border border-border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex flex-col items-start gap-0.5 rounded-xl border border-border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         active && "border-primary bg-primary/10"
       )}
     >

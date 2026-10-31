@@ -33,12 +33,12 @@ export function QuickFilters({
   const count = activeFilterCount(value);
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none]">
+    <div className="flex items-center gap-2 overflow-x-auto px-4 pt-1 pb-3 [scrollbar-width:none]">
       <Chip active={count > 0} onClick={() => onOpenSection("type")} ariaLabel={`필터 ${count}개 적용됨`}>
         <SlidersHorizontalIcon className="size-3.5" />
         필터
         {count > 0 && (
-          <span className="flex size-4.5 items-center justify-center rounded-full bg-primary-foreground text-[11px] font-semibold tabular-nums text-primary">
+          <span className="badge-pop flex size-4.5 items-center justify-center rounded-full bg-primary-foreground text-[11px] font-semibold tabular-nums text-primary">
             {count}
           </span>
         )}
@@ -97,11 +97,17 @@ export function ResultsBar({
   const filtered = activeFilterCount(value) > 0 || value.favoritesOnly;
 
   return (
-    <div className="flex items-center justify-between gap-2 border-y border-border bg-muted/40 px-4 py-2">
+    <div className="flex items-center justify-between gap-2 bg-background px-4 py-1.5">
       <div className="flex min-w-0 items-center gap-2 text-sm">
         <span className="text-muted-foreground">
           {value.favoritesOnly ? "관심 " : "총 "}
-          <b className="font-semibold tabular-nums text-foreground">{loading ? "–" : total.toLocaleString()}</b>개
+          <b
+            key={loading ? "loading" : total}
+            className="badge-pop inline-block font-display text-[15px] font-bold tabular-nums text-foreground"
+          >
+            {loading ? "–" : total.toLocaleString()}
+          </b>
+          개
         </span>
         {filtered && (
           <button
@@ -120,9 +126,9 @@ export function ResultsBar({
           aria-checked={value.includeOpenEnded}
           onClick={onToggleOpenEnded}
           className={cn(
-            "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+            "relative flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors duration-200 before:absolute before:-inset-y-2 before:-inset-x-1 before:content-[''] focus-visible:outline-2 focus-visible:outline-ring active:scale-95",
             value.includeOpenEnded
-              ? "border-border text-muted-foreground"
+              ? "border-border bg-card text-muted-foreground"
               : "border-primary bg-primary/10 font-medium text-primary"
           )}
         >
@@ -132,7 +138,7 @@ export function ResultsBar({
       <button
         onClick={onOpenSort}
         aria-label={`정렬: ${sortLabel}. 눌러서 바꾸기`}
-        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted active:bg-border focus-visible:outline-2 focus-visible:outline-ring"
       >
         <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />
         {sortLabel}
@@ -159,8 +165,8 @@ function Chip({
       aria-label={ariaLabel}
       aria-pressed={active}
       className={cn(
-        "flex shrink-0 items-center gap-1 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        active && "border-primary bg-primary text-primary-foreground"
+        "flex h-9 shrink-0 items-center gap-1 rounded-full border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-[background-color,border-color,color,transform] duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95",
+        active && "border-primary bg-primary text-primary-foreground shadow-[0_2px_8px_-2px_rgb(43_71_240/0.45)]"
       )}
     >
       {children}

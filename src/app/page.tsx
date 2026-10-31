@@ -54,6 +54,8 @@ export default function Home() {
   });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  // 첫 화면에서 목록이 순서대로 올라오는 등장 효과는 맨 처음 한 번만 — 필터를 바꿀 때마다 반복되면 거슬린다
+  const [intro, setIntro] = useState(true);
   const favorites = useFavorites();
   // 관심 보기 중에만 관심 목록이 쿼리에 들어간다 — 그 외에는 별 누를 때마다 다시 불러올 필요 없음
   const favoriteIdsForQuery = filters.favoritesOnly ? favorites.ids : null;
@@ -75,7 +77,10 @@ export default function Home() {
     fetchCampaigns(toQuery(debouncedSearch, filters, favoriteIdsForQuery ?? []))
       .then(setCampaigns)
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setTimeout(() => setIntro(false), 1600);
+      });
   }, [debouncedSearch, filters, favoriteIdsForQuery]);
 
   const countFor = useCallback(
@@ -92,8 +97,8 @@ export default function Home() {
   const noFavoritesYet = filters.favoritesOnly && favorites.ids.length === 0;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col bg-background">
-      <div className="sticky top-0 z-10 bg-background">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col bg-card sm:shadow-[0_0_0_1px_var(--border)]">
+      <div className="sticky top-0 z-10 bg-card/90 backdrop-blur-md">
         <SiteHeader search={search} onSearchChange={setSearch} />
         <QuickFilters
           value={filters}
@@ -111,9 +116,13 @@ export default function Home() {
         />
       </div>
 
-      <main className="flex flex-1 flex-col gap-3 p-4">
+      <main className="flex flex-1 flex-col">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <CampaignCardSkeleton key={i} />)
+          <ul className="divide-y divide-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <CampaignCardSkeleton key={i} />
+            ))}
+          </ul>
         ) : noFavoritesYet ? (
           <EmptyState
             variant="favorites"
@@ -122,22 +131,26 @@ export default function Home() {
         ) : campaigns.length === 0 ? (
           <EmptyState onReset={resetFilters} />
         ) : (
-          campaigns.map((campaign) => (
-            <CampaignCard
-              key={campaign.id}
-              campaign={campaign}
-              favorite={favorites.isFavorite(campaign.id)}
-              onToggleFavorite={() => favorites.toggle(campaign.id)}
-            />
-          ))
+          <ul className="divide-y divide-border">
+            {campaigns.map((campaign, i) => (
+              <CampaignCard
+                key={campaign.id}
+                campaign={campaign}
+                index={i}
+                intro={intro}
+                favorite={favorites.isFavorite(campaign.id)}
+                onToggleFavorite={() => favorites.toggle(campaign.id)}
+              />
+            ))}
+          </ul>
         )}
 
         {!loading && (
           <button
             onClick={() => setRequestOpen(true)}
-            className="mt-2 rounded-2xl border border-dashed border-border px-4 py-4 text-center text-sm text-muted-foreground hover:bg-muted/40"
+            className="m-4 rounded-2xl bg-primary/5 px-4 py-4 text-center text-sm text-muted-foreground transition-colors hover:bg-primary/10 active:scale-[0.99]"
           >
-            찾는 체험단 사이트가 없나요? <span className="font-medium text-primary">추가 요청하기</span>
+            찾는 체험단 사이트가 없나요? <span className="font-semibold text-primary">추가 요청하기</span>
           </button>
         )}
       </main>

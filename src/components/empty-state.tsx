@@ -11,8 +11,8 @@ export function EmptyState({
   if (variant === "favorites") {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-        <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-          <StarIcon className="size-7 text-muted-foreground" />
+        <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
+          <StarIcon className="size-7 text-primary" />
         </div>
         <div>
           <p className="font-medium text-foreground">아직 관심 체험단이 없어요</p>
@@ -27,8 +27,8 @@ export function EmptyState({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-      <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-        <SearchXIcon className="size-7 text-muted-foreground" />
+      <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
+        <SearchXIcon className="size-7 text-primary" />
       </div>
       <div>
         <p className="font-medium text-foreground">조건에 맞는 체험단이 없어요</p>
