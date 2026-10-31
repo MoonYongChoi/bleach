@@ -204,13 +204,29 @@ def fetch_with_browser(rows: list[dict]) -> dict[str, tuple[str | None, str | No
 
 
 def _fetch_pages(page, rows: list[dict], pages: dict) -> None:
+    """상세 페이지를 하나씩 연다. 광고·추적 요청이 계속 오가는 사이트(레뷰 등)는 "네트워크가 조용해질 때까지"를
+    기다리면 시간 초과가 나서(2026-10-31 레뷰 60건 중 26건) 문서가 열리면 읽고, 조용해지길 잠깐만 더 기다린다.
+    실패하면 한 번 더 시도하고, 이유(예외 종류)를 앞쪽 몇 건만 출력해 원인을 알 수 있게 한다."""
+    shown = 0
     for row in rows:
-        try:
-            resp = page.goto(row["source_url"], wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(1000)
-            pages[row["source_url"]] = (page.inner_text("body"), page.url, resp.status if resp else None)
-        except Exception:  # noqa: BLE001 - 한 페이지 실패가 검수 전체를 막으면 안 됨
+        last_error = None
+        for attempt in range(2):
+            try:
+                resp = page.goto(row["source_url"], wait_until="domcontentloaded", timeout=30000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:  # noqa: BLE001 - 끝까지 안 조용해져도 이미 열린 내용은 읽는다
+                    pass
+                page.wait_for_timeout(1000)
+                pages[row["source_url"]] = (page.inner_text("body"), page.url, resp.status if resp else None)
+                break
+            except Exception as e:  # noqa: BLE001 - 한 페이지 실패가 검수 전체를 막으면 안 됨
+                last_error = e
+        else:
             pages[row["source_url"]] = (None, None, None)
+            if shown < 5:
+                shown += 1
+                print(f"[페이지 열기 실패] {row['source_url']} -> {type(last_error).__name__}: {str(last_error)[:100]}")
 
 
 def _image_probe(url: str) -> tuple[str, str | None, int]:

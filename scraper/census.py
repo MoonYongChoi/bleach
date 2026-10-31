@@ -94,6 +94,8 @@ def channels_in(text: str) -> set[str]:
     found = {code for word, code in CHANNEL_TOKENS if word in text}
     if "reels" in found:
         found.discard("instagram")  # "인스타 릴스"는 릴스 하나다
+    if "shorts" in found:
+        found.discard("youtube")  # "유튜브 쇼츠"는 쇼츠 하나다 (2026-10-31 파블로·레뷰 대조에서 둘로 읽힌 오탐)
     return found
 
 
