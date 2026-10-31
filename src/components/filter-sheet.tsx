@@ -197,13 +197,13 @@ export function FilterSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto max-h-[85vh] max-w-md gap-0 rounded-t-2xl">
-        <SheetHeader className="pb-2">
+      <SheetContent side="bottom" className="mx-auto max-h-[85dvh] max-w-md gap-0 rounded-t-2xl">
+        <SheetHeader className="shrink-0 pb-2">
           <SheetTitle>필터</SheetTitle>
         </SheetHeader>
 
         {/* 섹션 바로가기 — 선택이 있는 섹션은 개수로 표시 */}
-        <nav className="flex gap-1.5 overflow-x-auto border-b border-border px-4 pb-3" aria-label="필터 항목">
+        <nav className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-4 pb-3" aria-label="필터 항목">
           {sections.map((id) => (
             <button
               key={id}

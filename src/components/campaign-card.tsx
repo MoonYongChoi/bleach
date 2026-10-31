@@ -54,7 +54,6 @@ export function CampaignCard({
   const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
   const channels = campaign.review_channels.map((c) => REVIEW_CHANNEL_LABELS[c] ?? c);
   const deadline = campaign.deadline_date ? `${campaign.deadline_date.slice(5).replace("-", ".")}까지` : null;
-  const place = [region || null, deadline].filter(Boolean).join(" · ");
 
   // 별을 누른 순간에만 한 번 튀게 한다 (처음 그려질 때나 목록이 바뀔 때는 움직이지 않음)
   const [popKey, setPopKey] = useState(0);
@@ -68,7 +67,7 @@ export function CampaignCard({
         href={campaign.source_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex min-w-0 flex-1 gap-3.5 px-4 py-3.5 pr-12 transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted/70 [@media(hover:hover)]:hover:bg-muted/50"
+        className="flex min-w-0 flex-1 gap-3 px-4 py-3.5 pr-11 min-[360px]:gap-3.5 min-[360px]:pr-12 transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted/70 [@media(hover:hover)]:hover:bg-muted/50"
       >
         <div className="relative shrink-0 self-start">
           <Thumbnail key={campaign.image_url ?? campaign.id} src={campaign.image_url} category={campaign.category} />
@@ -78,16 +77,25 @@ export function CampaignCard({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground/80">{campaign.platform}</span>
-            {typeLabel && <span className="rounded bg-muted px-1.5 py-px text-[11px] font-medium">{typeLabel}</span>}
-            {channels.length > 0 && <span className="truncate text-primary">{channels.join("·")} 리뷰</span>}
+          {/* 좁은 화면에서 이름이 세로로 꺾이지 않게 이름·유형은 한 덩어리로 두고, 채널은 모자라면 아래 줄로 내려간다 */}
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap font-medium text-foreground/80">{campaign.platform}</span>
+            {typeLabel && (
+              <span className="shrink-0 whitespace-nowrap rounded bg-muted px-1.5 py-px text-[11px] font-medium">{typeLabel}</span>
+            )}
+            {channels.length > 0 && <span className="text-primary">{channels.join("·")} 리뷰</span>}
           </p>
           <p className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-foreground">
             {campaign.vendor ? <span className="font-medium text-foreground/60">{campaign.vendor} </span> : null}
             {campaign.title}
           </p>
-          {place && <p className="truncate text-xs text-muted-foreground">{place}</p>}
+          {(region || deadline) && (
+            <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+              {region && <span className="truncate">{region}</span>}
+              {/* 마감일은 지역이 길어도 잘리지 않게 고정 */}
+              {deadline && <span className="shrink-0 whitespace-nowrap">{region ? "· " : ""}{deadline}</span>}
+            </p>
+          )}
           <Competition campaign={campaign} />
         </div>
       </a>

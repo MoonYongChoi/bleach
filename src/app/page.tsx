@@ -39,8 +39,9 @@ function toQuery(search: string, f: FilterState, favoriteIds: string[]): Campaig
 }
 
 export default function Home() {
+  // 입력 중인 글자(draft)와 실제로 검색에 쓰이는 글자(search)를 나눈다 — 엔터를 눌러야 search가 바뀐다
+  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTER_STATE);
   const [filterSection, setFilterSection] = useState<FilterSection | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
@@ -65,31 +66,27 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  useEffect(() => {
     // Intentional: show the skeleton immediately on every filter/search change,
     // not just the initial mount, so results re-fetching reads as "loading" to the user.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetchCampaigns(toQuery(debouncedSearch, filters, favoriteIdsForQuery ?? []))
+    fetchCampaigns(toQuery(search, filters, favoriteIdsForQuery ?? []))
       .then(setCampaigns)
       .catch(console.error)
       .finally(() => {
         setLoading(false);
         setTimeout(() => setIntro(false), 1600);
       });
-  }, [debouncedSearch, filters, favoriteIdsForQuery]);
+  }, [search, filters, favoriteIdsForQuery]);
 
   const countFor = useCallback(
     (draft: FilterState) =>
-      fetchCampaigns(toQuery(debouncedSearch, draft, favorites.ids)).then((rows) => rows.length),
-    [debouncedSearch, favorites.ids]
+      fetchCampaigns(toQuery(search, draft, favorites.ids)).then((rows) => rows.length),
+    [search, favorites.ids]
   );
 
   function resetFilters() {
+    setSearchDraft("");
     setSearch("");
     setFilters((f) => ({ ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded }));
   }
@@ -99,7 +96,7 @@ export default function Home() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col bg-card sm:shadow-[0_0_0_1px_var(--border)]">
       <div className="sticky top-0 z-10 bg-card/90 backdrop-blur-md">
-        <SiteHeader search={search} onSearchChange={setSearch} />
+        <SiteHeader draft={searchDraft} onDraftChange={setSearchDraft} onSubmit={setSearch} />
         <QuickFilters
           value={filters}
           favoriteCount={favorites.ids.length}

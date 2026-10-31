@@ -39,7 +39,7 @@ export function Competition({ campaign }: { campaign: Pick<Campaign, "recruit_co
 
   return (
     <div
-      className="flex items-center gap-2"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1"
       role="img"
       aria-label={`경쟁 ${styles.label}, 모집 ${recruit}명에 신청 ${applicant}명`}
     >
@@ -51,13 +51,13 @@ export function Competition({ campaign }: { campaign: Pick<Campaign, "recruit_co
       >
         {ratio}
       </span>
-      <span className="relative h-1 w-10 shrink-0 overflow-hidden rounded-full bg-mist" aria-hidden>
+      <span className="relative h-1 w-10 shrink-0 overflow-hidden rounded-full bg-mist max-[359px]:hidden" aria-hidden>
         <span
           className={cn("gauge-fill absolute inset-0 rounded-full", styles.fill)}
           style={{ width: `${fill * 100}%` }}
         />
       </span>
-      <span className="truncate text-xs tabular-nums text-muted-foreground">
+      <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
         신청 {applicant} / 모집 {recruit}명
       </span>
     </div>

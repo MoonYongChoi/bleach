@@ -23,35 +23,52 @@ function Wordmark() {
   );
 }
 
+/** 입력 중에는 목록이 바뀌지 않고, 엔터(모바일은 키보드의 "검색")를 눌러야 검색된다. */
 export function SiteHeader({
-  search,
-  onSearchChange,
+  draft,
+  onDraftChange,
+  onSubmit,
 }: {
-  search: string;
-  onSearchChange: (value: string) => void;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: (value: string) => void;
 }) {
   return (
     <header className="flex items-center gap-3 px-4 pt-3 pb-2">
       <Wordmark />
-      <div className="group relative flex-1">
+      <form
+        role="search"
+        className="group relative min-w-0 flex-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit(draft.trim());
+          (document.activeElement as HTMLElement | null)?.blur(); // 모바일 키보드를 내려서 결과가 바로 보이게
+        }}
+      >
         <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
         <Input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          type="search"
+          enterKeyHint="search"
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
           placeholder="체험단 검색"
           aria-label="체험단 검색"
-          className="h-10 rounded-full border-transparent bg-muted pl-10 pr-9 text-sm shadow-none transition-[background-color,box-shadow] duration-200 placeholder:text-muted-foreground focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="h-10 rounded-full border-transparent bg-muted pl-10 pr-9 text-base sm:text-sm [&::-webkit-search-cancel-button]:hidden shadow-none transition-[background-color,box-shadow] duration-200 placeholder:text-muted-foreground focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-primary/40"
         />
-        {search && (
+        {draft && (
           <button
-            onClick={() => onSearchChange("")}
+            type="button"
+            onClick={() => {
+              onDraftChange("");
+              onSubmit("");
+            }}
             aria-label="검색어 지우기"
             className="badge-pop absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-border"
           >
             <XIcon className="size-3.5" />
           </button>
         )}
-      </div>
+      </form>
     </header>
   );
 }

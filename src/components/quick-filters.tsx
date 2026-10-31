@@ -32,8 +32,9 @@ export function QuickFilters({
 }) {
   const count = activeFilterCount(value);
 
+  // 오른쪽 끝을 옅게 지워서 "옆으로 더 있다"는 걸 알려준다 (마지막 칩이 가려지지 않게 오른쪽 여백을 둔다)
   return (
-    <div className="flex items-center gap-2 overflow-x-auto px-4 pt-1 pb-3 [scrollbar-width:none]">
+    <div className="flex items-center gap-2 overflow-x-auto pr-10 pl-4 pt-1 pb-3 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]">
       <Chip active={count > 0} onClick={() => onOpenSection("type")} ariaLabel={`필터 ${count}개 적용됨`}>
         <SlidersHorizontalIcon className="size-3.5" />
         필터
@@ -97,8 +98,8 @@ export function ResultsBar({
   const filtered = activeFilterCount(value) > 0 || value.favoritesOnly;
 
   return (
-    <div className="flex items-center justify-between gap-2 bg-background px-4 py-1.5">
-      <div className="flex min-w-0 items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 bg-background px-4 py-1.5">
+      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-sm">
         <span className="text-muted-foreground">
           {value.favoritesOnly ? "관심 " : "총 "}
           <b
@@ -119,7 +120,7 @@ export function ResultsBar({
           </button>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap">
       {value.sort === "deadline" && (
         <button
           role="switch"
