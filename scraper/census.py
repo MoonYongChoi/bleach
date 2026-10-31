@@ -380,6 +380,17 @@ def _emit(report: str) -> None:
             fh.write(report + "\n")
 
 
+def closed_match(text: str):
+    """'모집 마감/종료' 같은 마감 문구. 제공 내역 선택지에 붙은 "(모집 마감)"은 그 선택지만 끝난 것이라 캠페인 마감으로 보지 않는다."""
+    for m in CLOSED_RE.finditer(text):
+        before = text[m.start() - 1] if m.start() > 0 else ""
+        after = text[m.end()] if m.end() < len(text) else ""
+        if before == "(" and after == ")":
+            continue
+        return m
+    return None
+
+
 def close_gone(rows: list[dict], key: str, apply: bool) -> None:
     """사이트 상세 페이지가 '마감/종료'를 직접 보여 주거나 404/410인 캠페인을 종료(is_active=false) 처리한다.
     읽기 실패·로그인·빈 페이지는 *모르는 것*이라 건드리지 않는다. 기본은 미리보기."""
@@ -403,7 +414,7 @@ def close_gone(rows: list[dict], key: str, apply: bool) -> None:
         if facts.get("period_label") == "마감":
             gone.append((r, "모집 기간 표기가 '마감'"))
             continue
-        m = CLOSED_RE.search(text)
+        m = closed_match(text)
         if m:
             around = re.sub(r"\s+", " ", text[max(0, m.start() - 30) : m.end() + 30])
             gone.append((r, f"문구 '{m.group(0)}' … {around}"))
@@ -452,7 +463,7 @@ def refresh_stale(rows: list[dict], key: str, apply: bool, stale_hours: int) -> 
             unreadable += 1
             continue
         f = FACTS[key](lines)
-        if CLOSED_RE.search(text) or f.get("period_label") == "마감":
+        if closed_match(text) or f.get("period_label") == "마감":
             closed_found.append(f"- {r['title'][:30]} | {r['source_url']}")
             continue
         applicant = f["applicant"] if f.get("applicant") is not None else r.get("applicant_count")
