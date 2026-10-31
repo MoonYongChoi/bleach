@@ -284,3 +284,60 @@ export function dDay(deadlineDate: string | null): number | null {
   };
   return Math.round((toUtc(deadlineDate) - toUtc(todayKst())) / 86400000);
 }
+
+
+// ---- 서버 경로(/api/...)와 주고받는 필터 직렬화 ---------------------------------------------------
+
+const SORT_VALUES: SortOption[] = ["deadline", "latest", "competition", "recruit"];
+
+function cleanList(value: unknown, maxItems = 40, maxLen = 40): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= maxLen);
+  return items.length > 0 ? [...new Set(items)].slice(0, maxItems).sort() : undefined;
+}
+
+/**
+ * 필터를 URL에 실을 문자열로. 같은 조건은 항상 같은 문자열이 되게(키 순서·배열 순서 고정) 해서
+ * CDN/서버 캐시가 같은 요청으로 알아보게 한다. 관심 목록(ids)은 기기마다 달라서 싣지 않는다.
+ */
+export function encodeFilters(filters: CampaignFilters): string {
+  const out: Record<string, unknown> = {};
+  if (filters.search) out.q = filters.search.slice(0, 60);
+  for (const key of ["sidos", "guguns", "categories", "platforms", "types", "channels"] as const) {
+    const list = cleanList(filters[key]);
+    if (list) out[key] = list;
+  }
+  if (filters.applyRate) {
+    // JSON은 Infinity를 못 담아서 "상한 없음"은 null로
+    out.rate = [filters.applyRate.min, Number.isFinite(filters.applyRate.max) ? filters.applyRate.max : null];
+  }
+  if (filters.includeOpenEnded === false) out.open = 0;
+  if (filters.sort) out.sort = filters.sort;
+  return JSON.stringify(out);
+}
+
+/** encodeFilters의 반대. 낯선 값은 버리고, 형식이 틀리면 null — 서버 경로가 임의 입력을 DB로 넘기지 않게 한다. */
+export function parseFilters(raw: string | null): CampaignFilters | null {
+  if (!raw || raw.length > 4000) return null;
+  let data: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    data = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const filters: CampaignFilters = {};
+  if (typeof data.q === "string" && data.q.trim()) filters.search = data.q.trim().slice(0, 60);
+  for (const key of ["sidos", "guguns", "categories", "platforms", "types", "channels"] as const) {
+    const list = cleanList(data[key]);
+    if (list) filters[key] = list;
+  }
+  if (Array.isArray(data.rate) && typeof data.rate[0] === "number") {
+    const max = typeof data.rate[1] === "number" ? data.rate[1] : Infinity;
+    filters.applyRate = { min: Math.max(0, data.rate[0]), max };
+  }
+  if (data.open === 0) filters.includeOpenEnded = false;
+  if (typeof data.sort === "string" && (SORT_VALUES as string[]).includes(data.sort)) filters.sort = data.sort as SortOption;
+  return filters;
+}

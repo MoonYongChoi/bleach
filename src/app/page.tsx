@@ -14,11 +14,9 @@ import { PlatformRequestSheet } from "@/components/platform-request-sheet";
 import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
+import { loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
 import {
   PAGE_SIZE,
-  countCampaigns,
-  fetchCampaignPage,
-  fetchFilterOptions,
   type Campaign,
   type CampaignFilters,
   type FilterOptions,
@@ -77,7 +75,7 @@ export default function Home() {
   const favoriteIdsForQuery = filters.favoritesOnly ? favorites.ids : null;
 
   useEffect(() => {
-    fetchFilterOptions().then(setFilterOptions).catch(console.error);
+    loadFilterOptions().then(setFilterOptions).catch(console.error);
   }, []);
 
   const query = useMemo(
@@ -95,7 +93,7 @@ export default function Home() {
     setLoading(true);
     setLoadMoreError(false);
     /* eslint-enable react-hooks/set-state-in-effect */
-    Promise.all([fetchCampaignPage(query, 0), countCampaigns(query)])
+    Promise.all([loadCampaignPage(query, 0), loadCampaignCount(query)])
       .then(([rows, count]) => {
         if (generation !== generationRef.current) return;
         setCampaigns(rows);
@@ -123,7 +121,7 @@ export default function Home() {
     const generation = generationRef.current;
     setLoadingMore(true);
     setLoadMoreError(false);
-    fetchCampaignPage(query, nextPageRef.current)
+    loadCampaignPage(query, nextPageRef.current)
       .then((rows) => {
         if (generation !== generationRef.current) return;
         nextPageRef.current += 1;
@@ -160,7 +158,7 @@ export default function Home() {
   }, [hasMore, loadMore, loadMoreError, campaigns.length]);
 
   const countFor = useCallback(
-    (draft: FilterState) => countCampaigns(toQuery(search, draft, favorites.ids)),
+    (draft: FilterState) => loadCampaignCount(toQuery(search, draft, favorites.ids)),
     [search, favorites.ids]
   );
 
