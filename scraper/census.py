@@ -13,11 +13,26 @@ import argparse
 import re
 from collections import defaultdict
 
+import requests
+from bs4 import BeautifulSoup
+
 from connectors import BY_KEY, BY_LABEL
 from verify import fetch_static, fetch_with_browser, sample_rows, uses_browser
 
 
-def pick_dump_rows(rows: list[dict], per_group: int = 2) -> list[dict]:
+def fetch_static_lines(url: str) -> tuple[str | None, str | None, int | None]:
+    """verify.fetch_static은 글자를 한 줄로 합친다 — 라벨을 보려고 줄바꿈을 살려서 읽는다."""
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}, timeout=15)
+    except requests.RequestException:
+        return None, None, None
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return soup.get_text("\n", strip=True), resp.url, resp.status_code
+
+
+def pick_dump_rows(rows: list[dict], per_group: int = 1) -> list[dict]:
     """campaign_type별 몇 건 + 채널·카테고리·지역이 비어 있는 건을 섞어서 고른다."""
     groups: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
@@ -41,7 +56,7 @@ def dump(rows: list[dict], lines: int) -> None:
     browser_rows = [r for r in chosen if uses_browser(BY_LABEL[r["platform"]])]
     pages = fetch_with_browser(browser_rows) if browser_rows else {}
     for r in chosen:
-        page = pages.get(r["source_url"]) if uses_browser(BY_LABEL[r["platform"]]) else fetch_static(r["source_url"])
+        page = pages.get(r["source_url"]) if uses_browser(BY_LABEL[r["platform"]]) else fetch_static_lines(r["source_url"])
         text, final_url, status = page or (None, None, None)
         print(f"\n===== [{r['platform']}] {r['_why']} | {r['source_url']}")
         print(
@@ -51,15 +66,17 @@ def dump(rows: list[dict], lines: int) -> None:
         )
         print(f"  status={status} final={final_url} chars={len(text or '')}")
         body = [ln.strip() for ln in re.split(r"[\r\n]+", text or "") if ln.strip()]
-        for i, ln in enumerate(body[:lines]):
-            print(f"  {i:3d} | {ln[:120]}")
+        # 달력 숫자·마스킹된 신청자 이름 같은 잡음은 건너뛴다
+        shown = [ln for ln in body if not re.fullmatch(r"[\d<>]{1,2}|.{1,2}\*{2,}", ln)]
+        for i, ln in enumerate(shown[:lines]):
+            print(f"  {i:3d} | {ln[:150]}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
     parser.add_argument("--dump", action="store_true", help="표본 상세 페이지 글자를 출력만 한다")
-    parser.add_argument("--lines", type=int, default=45)
+    parser.add_argument("--lines", type=int, default=40)
     args = parser.parse_args()
 
     connectors = [BY_KEY[k.strip()] for k in args.only.split(",")]
