@@ -55,6 +55,9 @@ export default function Home() {
   });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  // 불러오기에 실패했을 때 "결과 없음"과 구분해서 보여주고, 다시 시도할 수 있게 한다
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   // 첫 화면에서 목록이 순서대로 올라오는 등장 효과는 맨 처음 한 번만 — 필터를 바꿀 때마다 반복되면 거슬린다
   const [intro, setIntro] = useState(true);
   const favorites = useFavorites();
@@ -71,13 +74,20 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchCampaigns(toQuery(search, filters, favoriteIdsForQuery ?? []))
-      .then(setCampaigns)
-      .catch(console.error)
+      .then((rows) => {
+        setCampaigns(rows);
+        setLoadError(false);
+      })
+      .catch((e) => {
+        console.error(e);
+        setCampaigns([]);
+        setLoadError(true);
+      })
       .finally(() => {
         setLoading(false);
         setTimeout(() => setIntro(false), 1600);
       });
-  }, [search, filters, favoriteIdsForQuery]);
+  }, [search, filters, favoriteIdsForQuery, retryKey]);
 
   const countFor = useCallback(
     (draft: FilterState) =>
@@ -103,9 +113,15 @@ export default function Home() {
           onOpenSection={setFilterSection}
           onToggleFavorites={() => setFilters((f) => ({ ...f, favoritesOnly: !f.favoritesOnly }))}
         />
+        {/* 불러오는 동안 흐르는 얇은 막대 — 자리는 항상 잡아 두어 나타날 때 화면이 밀리지 않는다 */}
+        <div className="h-0.5 overflow-hidden bg-transparent" aria-hidden={!loading}>
+          {loading && (
+            <div role="progressbar" aria-label="체험단 목록 불러오는 중" className="bar-slide h-full w-1/4 rounded-full bg-primary" />
+          )}
+        </div>
         <ResultsBar
           total={campaigns.length}
-          loading={loading}
+          loading={loading || loadError}
           value={filters}
           onOpenSort={() => setSortOpen(true)}
           onToggleOpenEnded={() => setFilters((f) => ({ ...f, includeOpenEnded: !f.includeOpenEnded }))}
@@ -113,13 +129,15 @@ export default function Home() {
         />
       </div>
 
-      <main className="flex flex-1 flex-col">
+      <main className="flex flex-1 flex-col" aria-busy={loading}>
         {loading ? (
           <ul className="divide-y divide-border">
             {Array.from({ length: 5 }).map((_, i) => (
               <CampaignCardSkeleton key={i} />
             ))}
           </ul>
+        ) : loadError ? (
+          <EmptyState variant="error" onReset={() => setRetryKey((k) => k + 1)} />
         ) : noFavoritesYet ? (
           <EmptyState
             variant="favorites"
@@ -142,7 +160,7 @@ export default function Home() {
           </ul>
         )}
 
-        {!loading && (
+        {!loading && !loadError && (
           <button
             onClick={() => setRequestOpen(true)}
             className="m-4 rounded-2xl bg-primary/5 px-4 py-4 text-center text-sm text-muted-foreground transition-colors hover:bg-primary/10 active:scale-[0.99]"

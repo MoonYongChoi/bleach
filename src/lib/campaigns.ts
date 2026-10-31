@@ -82,67 +82,77 @@ export const REVIEW_CHANNEL_LABELS: Record<string, string> = {
 };
 
 const SELECT_COLUMNS =
-  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, campaign_type, review_channels, description, image_url, vendor, recruit_count, applicant_count, created_at";
+  "id, platform, title, region_sido, region_gugun, deadline_date, announce_date, source_url, category, campaign_type, review_channels, image_url, vendor, recruit_count, applicant_count, created_at";
 
 export async function fetchCampaigns(filters: CampaignFilters = {}): Promise<Campaign[]> {
   if (filters.ids && filters.ids.length === 0) return [];
 
-  // 지역/카테고리/업체/유형/채널/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
-  // 연속된 필터 호출은 SQL WHERE ... AND ... 로 합쳐진다). 같은 항목 안의 복수 선택은 OR.
-  let query = supabase.from("campaigns").select(SELECT_COLUMNS).eq("is_active", true);
+  const buildQuery = () => {
+    // 지역/카테고리/업체/유형/채널/검색은 모두 AND로 묶여 DB에서 같이 걸러진다 (PostgREST의
+    // 연속된 필터 호출은 SQL WHERE ... AND ... 로 합쳐진다). 같은 항목 안의 복수 선택은 OR.
+    let query = supabase.from("campaigns").select(SELECT_COLUMNS).eq("is_active", true);
 
-  if (filters.search) {
-    query = query.ilike("title", `%${filters.search}%`);
-  }
-  const regionClause = buildRegionClause(filters.sidos ?? [], filters.guguns ?? []);
-  if (regionClause) {
-    query = query.or(regionClause);
-  }
-  if (filters.categories && filters.categories.length > 0) {
-    query = query.in("category", filters.categories);
-  }
-  if (filters.platforms && filters.platforms.length > 0) {
-    query = query.in("platform", filters.platforms);
-  }
-  if (filters.types && filters.types.length > 0) {
-    query = query.in("campaign_type", filters.types);
-  }
-  if (filters.channels && filters.channels.length > 0) {
-    // 고른 채널 중 하나라도 요구하는 캠페인 (배열 교집합)
-    query = query.overlaps("review_channels", filters.channels);
-  }
-  if (filters.ids) {
-    query = query.in("id", filters.ids);
-  }
-  if (filters.sort === "deadline" && filters.includeOpenEnded === false) {
-    query = query.not("deadline_date", "is", null);
-  }
+    if (filters.search) {
+      query = query.ilike("title", `%${filters.search}%`);
+    }
+    const regionClause = buildRegionClause(filters.sidos ?? [], filters.guguns ?? []);
+    if (regionClause) {
+      query = query.or(regionClause);
+    }
+    if (filters.categories && filters.categories.length > 0) {
+      query = query.in("category", filters.categories);
+    }
+    if (filters.platforms && filters.platforms.length > 0) {
+      query = query.in("platform", filters.platforms);
+    }
+    if (filters.types && filters.types.length > 0) {
+      query = query.in("campaign_type", filters.types);
+    }
+    if (filters.channels && filters.channels.length > 0) {
+      // 고른 채널 중 하나라도 요구하는 캠페인 (배열 교집합)
+      query = query.overlaps("review_channels", filters.channels);
+    }
+    if (filters.ids) {
+      query = query.in("id", filters.ids);
+    }
+    if (filters.sort === "deadline" && filters.includeOpenEnded === false) {
+      query = query.not("deadline_date", "is", null);
+    }
 
-  switch (filters.sort) {
-    case "deadline":
-      // 상시모집(마감일 없음)은 맨 뒤로
-      query = query.order("deadline_date", { ascending: true, nullsFirst: false });
-      break;
-    case "recruit":
-      query = query.order("recruit_count", { ascending: false, nullsFirst: false });
-      break;
-    default:
+    switch (filters.sort) {
+      case "deadline":
+        // 상시모집(마감일 없음)은 맨 뒤로
+        query = query.order("deadline_date", { ascending: true, nullsFirst: false });
+        break;
+      case "recruit":
+        query = query.order("recruit_count", { ascending: false, nullsFirst: false });
+        break;
+      default:
+        query = query.order("created_at", { ascending: false });
+    }
+    // 같은 마감일/모집인원 안에서는 최신 등록순으로 순서를 고정 (새로고침마다 순서가 섞이지 않게)
+    if (filters.sort === "deadline" || filters.sort === "recruit") {
       query = query.order("created_at", { ascending: false });
-  }
-  // 같은 마감일/모집인원 안에서는 최신 등록순으로 순서를 고정 (새로고침마다 순서가 섞이지 않게)
-  if (filters.sort === "deadline" || filters.sort === "recruit") {
-    query = query.order("created_at", { ascending: false });
-  }
+    }
+    // 같은 배치로 들어온 행은 created_at이 같아서, 마지막에 id로 순서를 고정해야 페이지 경계에서 행이 겹치거나 빠지지 않는다
+    return query.order("id");
+  };
 
-  // 테이블이 아직 작아서(수백 건) 넉넉히 받아온 뒤 지원률은 클라이언트에서 추가로
-  // 거른다. 같은 스크래핑 배치로 들어온 행은 created_at이 트랜잭션 단위로 동일해서,
-  // limit을 너무 타이트하게 두면 동점 처리 순서상 특정 행들이 통째로 잘릴 수 있다.
-  const { data, error } = await query.limit(1000);
-  if (error) throw error;
+  // 한 번에 받을 수 있는 최대 행 수(PostgREST/Supabase 기본 1000)를 넘는 만큼 페이지를 나눠 모두 받는다.
+  // 예전에는 limit(1000) 한 번이라 활성 캠페인이 1000건을 넘으면 정렬 뒤쪽(마감일 먼 것·상시모집)이 통째로 잘렸다.
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 20;
+  const collected: Campaign[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await buildQuery().range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (error) throw error;
+    collected.push(...((data ?? []) as Campaign[]));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
 
   // 지원률(applicant_count / recruit_count)은 계산된 값이라 PostgREST where절/정렬로
   // 못 다뤄서, 위 필터들과 AND로 합쳐지도록 클라이언트에서 한 번 더 좁히고 정렬한다.
-  let rows = (data ?? []) as Campaign[];
+  let rows = collected;
   if (filters.applyRate) {
     const { min, max } = filters.applyRate;
     rows = rows.filter((row) => {

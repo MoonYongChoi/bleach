@@ -1,4 +1,4 @@
-import { SearchXIcon, StarIcon } from "lucide-react";
+import { CloudOffIcon, SearchXIcon, StarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function EmptyState({
@@ -6,8 +6,25 @@ export function EmptyState({
   variant = "results",
 }: {
   onReset: () => void;
-  variant?: "results" | "favorites";
+  variant?: "results" | "favorites" | "error";
 }) {
+  if (variant === "error") {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center" role="alert">
+        <div className="flex size-16 items-center justify-center rounded-full bg-coral/10">
+          <CloudOffIcon className="size-7 text-coral" />
+        </div>
+        <div>
+          <p className="font-medium text-foreground">체험단 목록을 불러오지 못했어요</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            네트워크 연결을 확인하고 다시 시도해 주세요. 계속 안 되면 잠시 뒤에 다시 열어 보세요.
+          </p>
+        </div>
+        <Button onClick={onReset}>다시 시도</Button>
+      </div>
+    );
+  }
+
   if (variant === "favorites") {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
