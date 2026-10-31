@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import time
 from datetime import date
 from collections import defaultdict
 
@@ -85,7 +86,7 @@ from verify import CLOSED_RE
 
 CHANNEL_TOKENS = [("릴스", "reels"), ("쇼츠", "shorts"), ("숏츠", "shorts"), ("클립", "clip"),
                   ("유튜브", "youtube"), ("틱톡", "tiktok"), ("블로그", "blog"), ("인스타", "instagram")]
-SITE_TYPE_TO_DB = {"방문": "방문", "배송": "배송", "페이백": "구매", "구매": "구매", "기자단": "기자단"}
+SITE_TYPE_TO_DB = {"방문": "방문", "배송": "배송", "페이백": "구매", "구매": "구매", "기자단": "기자단", "블로그": None, "쇼핑몰": "구매"}
 DQ_CATEGORY_BADGES = {"맛집", "뷰티", "배송", "기타", "기자단", "여가", "맞춤"}
 
 
@@ -143,7 +144,9 @@ def facts_modublog(lines: list[str]) -> dict:
     f: dict = {}
     if "포인트 충전소" in lines:
         i = lines.index("포인트 충전소")
-        f["type_label"] = lines[i + 2] if i + 2 < len(lines) else None
+        # 뒤따르는 "+ 9,600" 같은 포인트·숫자 줄은 건너뛰고 처음 나오는 글자 줄이 분류 태그(블로그/쇼핑몰 …)
+        f["type_label"] = next((ln for ln in lines[i + 1 : i + 8] if not re.fullmatch(r"[+\-P\s\d,.]+", ln)), None)
+    f["channels"] = channels_in(f.get("type_label") or "")
     def after(label: str) -> str | None:
         return lines[lines.index(label) + 1] if label in lines and lines.index(label) + 1 < len(lines) else None
     f["period_label"] = after("모집 기간")
@@ -154,7 +157,30 @@ def facts_modublog(lines: list[str]) -> dict:
     return f
 
 
-FACTS = {"dinnerqueen": facts_dinnerqueen, "revu": facts_revu, "modublog": facts_modublog}
+PAVLOVU_TYPES = {"방문형": "방문", "배송형": "배송", "구매형": "구매", "기자단형": "기자단", "기자단": "기자단"}
+
+
+def facts_pavlovu(lines: list[str]) -> dict:
+    f: dict = {}
+    for ln in lines:
+        m = re.search(r"·\s*(방문형|배송형|구매형|기자단형|기자단)\s*$", ln)
+        if m:
+            f["type_label"] = PAVLOVU_TYPES[m.group(1)]
+            break
+    cat = next((re.match(r"^(방문|배송|기자단|출장|구매)\s*·\s*(\S+)", ln) for ln in lines if re.match(r"^(방문|배송|기자단|출장|구매)\s*·\s*\S+", ln)), None)
+    if cat:
+        f["category_label"] = cat.group(2)
+    if "미션" in lines:
+        i = lines.index("미션")
+        f["channels"] = channels_in(" ".join(lines[i + 1 : i + 4]))
+    if "모집" in lines:
+        i = lines.index("모집")
+        f["recruit"] = _num(re.sub(r"\D", "", lines[i + 1])) if i + 1 < len(lines) else None
+    f["realtime"] = "실시간 모집" in lines
+    return f
+
+
+FACTS = {"dinnerqueen": facts_dinnerqueen, "revu": facts_revu, "modublog": facts_modublog, "pavlovu": facts_pavlovu}
 
 
 def _category_ok(site_label: str | None, db_category: str | None) -> bool | None:
@@ -225,6 +251,10 @@ def run(rows: list[dict], key: str) -> None:
             closed += 1
         f = extract(lines)
         res = compare(r, f, today)
+        if f.get("period_label") == "마감" and len(examples["사이트는 마감인데 DB는 진행 중"]) < 20:
+            examples["사이트는 마감인데 DB는 진행 중"].append(f"- {r['title'][:28]} | DB 마감일 {r.get('deadline_date')} | {r['source_url']}")
+        if not uses_browser(BY_LABEL[r["platform"]]):
+            time.sleep(0.2)
         for field, v in res.items():
             verdicts[field][v] += 1
             if v in ("mismatch", "db_empty") and len(examples[f"{field}:{v}"]) < 6:
@@ -262,6 +292,40 @@ def run(rows: list[dict], key: str) -> None:
         csv.writer(fh).writerows([["platform", "title", "source_url", "verdicts..."], *out])
 
 
+def drift_check(rows: list[dict], connector) -> None:
+    """상세 페이지가 로그인 뒤에 있는 사이트용: 지금 목록을 다시 수집해 정제한 값과 DB 값을 비교한다.
+    사이트 원본(목록 API)과 현재 정제 규칙 기준으로 DB가 얼마나 어긋났는지 본다 — 목록에 있는 캠페인만 해당."""
+    from normalize import normalize_for
+
+    fresh: dict[str, dict] = {}
+    for raw in connector.fetch():
+        result = normalize_for(connector, raw)
+        if result.record:
+            fresh[result.record["source_url"]] = result.record
+    in_list = [r for r in rows if r["source_url"] in fresh]
+    fields = ["title", "campaign_type", "review_channels", "category", "region_sido", "region_gugun", "recruit_count", "deadline_date", "applicant_count"]
+    bad: dict[str, list[str]] = defaultdict(list)
+    for r in in_list:
+        new = fresh[r["source_url"]]
+        for fld in fields:
+            if (r.get(fld) or None) != (new.get(fld) or None):
+                bad[fld].append(f"- {r['title'][:24]} | DB: {r.get(fld)} | 목록: {new.get(fld)} | {r['source_url']}")
+    lines = [f"## 목록 재수집 대조: {connector.label}", "",
+             f"- DB 활성 {len(rows)}건 중 현재 목록에 있는 건 {len(in_list)}건 (목록에 없는 {len(rows) - len(in_list)}건은 상세 페이지가 로그인 필요라 확인 못 함)", "",
+             "| 항목 | 어긋남 | 검사 |", "|---|---|---|"]
+    for fld in fields:
+        lines.append(f"| {fld} | {len(bad[fld])} | {len(in_list)} |")
+    for fld, items in bad.items():
+        if fld != "applicant_count":
+            lines += ["", f"**{fld}**", *items[:8]]
+    report = "\n".join(lines)
+    print(report)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write(report + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
@@ -277,6 +341,9 @@ def main() -> None:
         dump(rows, args.lines, args.skip)
         return
     key = connectors[0].key
+    if key == "reviewnote":
+        drift_check(rows, connectors[0])
+        return
     if key not in FACTS:
         raise SystemExit(f"{key}: 추출 규칙이 아직 없습니다")
     run(rows, key)
