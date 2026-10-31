@@ -9,6 +9,9 @@ on:
       per:
         description: "플랫폼별 표본 수 (0 = 전수)"
         default: "0"
+      only:
+        description: "일부 커넥터만 (예: reviewnote,pavlovu). 비우면 전부"
+        default: ""
   schedule:
     # 매주 월요일 10:15 KST (cron은 UTC 기준이라 01:15)
     - cron: "15 1 * * 1"
@@ -37,7 +40,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REVU_ID: ${{ secrets.REVU_ID }}
           REVU_PW: ${{ secrets.REVU_PW }}
-        run: python verify.py --per "${{ inputs.per || '0' }}"
+        run: |
+          args=""
+          if [ -n "${{ inputs.only }}" ]; then args="--only ${{ inputs.only }}"; fi
+          python verify.py --per "${{ inputs.per || '0' }}" $args
 
       - name: Upload per-campaign results
         if: always()

@@ -115,16 +115,33 @@ def check_row(row: dict, page_text: str | None, final_url: str | None, status: i
     return result
 
 
-def check_image(url: str | None) -> str:
-    if not url:
-        return "skip"
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0 Safari/537.36"
+)
+
+
+def _image_status(url: str, headers: dict) -> str:
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10, stream=True)
-        ok = resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image/")
+        resp = requests.get(url, headers=headers, timeout=10, stream=True)
+        out = f"{resp.status_code} {resp.headers.get('content-type', '-').split(';')[0]}"
         resp.close()
-        return "ok" if ok else "mismatch"
-    except requests.RequestException:
-        return "mismatch"
+        return out
+    except requests.RequestException as e:
+        return f"오류 {type(e).__name__}"
+
+
+def check_image(url: str | None) -> tuple[str, str]:
+    """(판정, 자세한 내용). 봇 User-Agent로 막히는 사이트인지 가리려고 브라우저 UA로도 한 번 더 본다."""
+    if not url:
+        return "skip", ""
+    bot = _image_status(url, HEADERS)
+    if bot.startswith("200 image/"):
+        return "ok", bot
+    browser = _image_status(url, {"User-Agent": BROWSER_UA, "Referer": url.split("/", 3)[0] + "//" + url.split("/")[2] + "/"})
+    # 브라우저 UA로는 열리면 사용자 화면에서는 이미지가 보이는 것 → 데이터 오류가 아니라 검수 도구 쪽 한계
+    verdict = "ok" if browser.startswith("200 image/") else "mismatch"
+    return verdict, f"봇 UA: {bot} | 브라우저 UA: {browser}"
 
 
 def fetch_static(url: str) -> tuple[str | None, str | None, int | None]:
@@ -201,7 +218,34 @@ def sample_rows(platform_labels: list[str], per: int) -> list[dict]:
         conn.close()
 
 
-def report(results: list[tuple[dict, dict[str, str]]]) -> str:
+def diagnostics_for(row: dict, res: dict[str, str], page_text: str | None, image_detail: str, seen: Counter) -> list[str]:
+    """틀린 항목마다 플랫폼별 앞 3건만, DB 값과 검수 도구가 본 페이지 글자(앞부분)를 남긴다."""
+    snippet = re.sub(r"\s+", " ", page_text or "")[:260]
+    db_value = {
+        "title": row.get("title"),
+        "deadline": row.get("deadline_date"),
+        "recruit": row.get("recruit_count"),
+        "applicant": row.get("applicant_count"),
+        "region": row.get("region_guguns") or row.get("region_sido"),
+        "channel": row.get("review_channels"),
+        "image": row.get("image_url"),
+        "open": "(모집중이어야 함)",
+        "page": row.get("source_url"),
+    }
+    lines = []
+    for field in FIELDS:
+        if res[field] not in ("mismatch", "missing"):
+            continue
+        key = (row["platform"], field)
+        if seen[key] >= 3:
+            continue
+        seen[key] += 1
+        extra = image_detail if field == "image" else f"페이지 글자 {len(page_text or '')}자, 앞부분: {snippet}"
+        lines.append(f"- [{row['platform']}] {FIELD_LABELS[field]} | DB: {db_value[field]} | {extra} | {row['source_url']}")
+    return lines
+
+
+def report(results: list[tuple[dict, dict[str, str]]], diagnostics: list[str] | None = None) -> str:
     by_platform: dict[str, list[dict[str, str]]] = defaultdict(list)
     problems: list[str] = []
     for row, res in results:
@@ -236,6 +280,8 @@ def report(results: list[tuple[dict, dict[str, str]]]) -> str:
             lines.append(f"\n… 외 {len(problems) - len(shown)}건은 첨부된 verify_result.csv 참고")
     else:
         lines.append("없음")
+    if diagnostics:
+        lines += ["", "### 진단 표본 (틀린 항목별 플랫폼당 3건: DB 값 vs 검수 도구가 읽은 페이지)", "", *diagnostics]
     return "\n".join(lines)
 
 
@@ -250,13 +296,16 @@ def main() -> None:
     rows = sample_rows([c.label for c in connectors], args.per)
 
     results: list[tuple[dict, dict[str, str]]] = []
+    diagnostics: list[str] = []
+    seen_diag: Counter = Counter()
     browser_rows = [r for r in rows if BY_LABEL[r["platform"]].needs_browser]
     browser_pages = fetch_with_browser(browser_rows) if browser_rows else {}
     for row in rows:
         page = browser_pages.get(row["source_url"]) if BY_LABEL[row["platform"]].needs_browser else fetch_static(row["source_url"])
         res = check_row(row, *(page or (None, None, None)))
-        res["image"] = check_image(row.get("image_url"))
+        res["image"], image_detail = check_image(row.get("image_url"))
         results.append((row, res))
+        diagnostics += diagnostics_for(row, res, (page or (None,))[0], image_detail, seen_diag)
         if not BY_LABEL[row["platform"]].needs_browser:
             time.sleep(0.3)  # 원본 사이트에 부담 주지 않게 (전수 검사는 수백 건)
     print(f"검사 {len(results)}건 완료")
@@ -267,7 +316,7 @@ def main() -> None:
         for row, res in results:
             writer.writerow([row["platform"], row["title"], row["source_url"], *(res[f] for f in FIELDS)])
 
-    md = report(results)
+    md = report(results, diagnostics)
     print(md)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

@@ -31,6 +31,8 @@ DAYS_LEFT_RE = re.compile(r"(\d+)\s*일\s*(?:남음|남았)")
 DDAY_RE = re.compile(r"D\s*-\s*(\d+)", re.I)
 RECRUIT_RE = re.compile(r"신청\s*([\d,]+)\s*/\s*([\d,]+)")
 _CHANNEL_BADGES = {"릴스", "클립", "쇼츠", "숏츠", "블로그", "인스타", "인스타그램", "유튜브", "틱톡"}
+# 사이트 분류 탭(맛집/뷰티/배송/기타/기자단/여가/맞춤)과 같은 이름이 카드 뱃지로도 붙는다 (2026-10-29 카드 조사)
+_CATEGORY_BADGES = {"맛집", "뷰티", "배송", "기타", "기자단", "여가", "맞춤"}
 _NOT_DESCRIPTION = re.compile(r"신청|남음|오늘까지|내일까지|포인트|Only|^\[")
 
 
@@ -65,11 +67,9 @@ def parse_cards(html: str) -> list[RawCampaign]:
         description = next((p for p in paragraphs[1:] if p and not _NOT_DESCRIPTION.search(p)), None)
 
         # 뱃지 줄에는 채널(릴스/클립)뿐 아니라 "포인트", "랜덤픽" 같은 것도 있다 — 채널 단어만 남긴다
-        badges = [
-            t
-            for t in (b.get_text(strip=True) for b in card.select(".qz-dq-card__badge-row strong"))
-            if t in _CHANNEL_BADGES
-        ]
+        badge_texts = [b.get_text(strip=True) for b in card.select(".qz-dq-card__badge-row strong")]
+        badges = [t for t in badge_texts if t in _CHANNEL_BADGES]
+        category_badge = next((t for t in badge_texts if t in _CATEGORY_BADGES), None)
         region = (brackets["regions"] or [None])[0]
 
         campaigns.append(
@@ -83,7 +83,10 @@ def parse_cards(html: str) -> list[RawCampaign]:
                 deadline_days_left=days_left,
                 applicant_count=rm.group(1) if rm else None,
                 recruit_count=rm.group(2) if rm else None,
-                type_hint="방문" if region else "배송",
+                category_raw=category_badge,
+                # 카드에 유형 표시가 따로 없어 지역 괄호가 있으면 방문, 없으면 제품 제공으로 본다.
+                # 단 사이트가 배송/기자단 분류를 직접 붙인 카드는 그 분류를 따른다.
+                type_hint=category_badge if category_badge in ("배송", "기자단") else ("방문" if region else "배송"),
                 channels_raw=badges + brackets["channels"],
             )
         )

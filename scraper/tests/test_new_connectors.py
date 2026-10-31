@@ -52,6 +52,27 @@ class DinnerqueenTest(unittest.TestCase):
         self.assertTrue(r["image_url"].startswith("https://dq-files.gcdn.ntruss.com/"))
 
 
+    def test_region_card_uses_site_category_badge(self):
+        # 실제 카드 #37: [지역][릴스] 형태 + 사이트가 직접 붙인 "맛집" 분류 뱃지
+        raws = parse_cards(fixture("dinnerqueen_region_card.html"))
+        self.assertEqual(len(raws), 1)
+        self.assertEqual(raws[0].category_raw, "맛집")
+        r = norm("dinnerqueen", raws[0])
+        self.assertEqual(r["title"], "초대창 청주동남지구점")
+        self.assertEqual((r["region_sido"], r["region_gugun"]), ("충북", "청주시"))
+        self.assertEqual(r["campaign_type"], "방문")
+        self.assertEqual(r["category"], "맛집")
+        self.assertEqual(r["review_channels"], ["reels"])
+        self.assertEqual((r["applicant_count"], r["recruit_count"]), (2, 1))
+        self.assertEqual(r["deadline_date"], date(2026, 11, 4))  # 6일 남음 (기준일 2026-10-29)
+        self.assertEqual(r["description"], "모둠구이 B 체험권")
+
+    def test_site_delivery_badge_wins_over_missing_region(self):
+        card = fixture("dinnerqueen_region_card.html").replace("[충북 청주]", "").replace(">맛집<", ">배송<")
+        r = parse_cards(card)[0]
+        self.assertEqual(r.type_hint, "배송")
+
+
 class ModublogTest(unittest.TestCase):
     # probe 로그의 실제 카드를 CARD_JS가 돌려주는 모양으로
     CARD = {
