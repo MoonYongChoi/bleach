@@ -12,6 +12,9 @@ on:
       skip:
         description: "덤프에서 앞쪽 N줄 건너뛰기 (메뉴·푸터가 긴 사이트)"
         default: "0"
+      urls:
+        description: "dump할 상세 페이지 주소(쉼표 구분, 선택)"
+        default: ""
       fix_category:
         description: "비어 있는 category_raw를 사이트 카테고리로 채우기 (apply를 켜기 전에는 미리보기)"
         type: boolean
@@ -48,7 +51,7 @@ jobs:
           REVU_PW: ${{ secrets.REVU_PW }}
         run: |
           args=""
-          if [ "${{ inputs.dump }}" = "true" ]; then args="--dump --skip ${{ inputs.skip || '0' }}"; fi
+          if [ "${{ inputs.dump }}" = "true" ]; then args="--dump --skip ${{ inputs.skip || '0' }}"; if [ -n "${{ inputs.urls }}" ]; then args="$args --urls ${{ inputs.urls }}"; fi; fi
           if [ "${{ inputs.fix_category }}" = "true" ]; then
             args="--fix-category"
             if [ "${{ inputs.apply }}" = "true" ]; then args="$args --apply"; fi

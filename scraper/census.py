@@ -54,8 +54,8 @@ def pick_dump_rows(rows: list[dict], per_group: int = 1) -> list[dict]:
     return list(picked.values())
 
 
-def dump(rows: list[dict], lines: int, skip: int = 0) -> None:
-    chosen = pick_dump_rows(rows)
+def dump(rows: list[dict], lines: int, skip: int = 0, only_urls: set[str] | None = None) -> None:
+    chosen = [dict(r, _why="지정") for r in rows if r["source_url"] in only_urls] if only_urls else pick_dump_rows(rows)
     browser_rows = [r for r in chosen if uses_browser(BY_LABEL[r["platform"]])]
     pages = fetch_with_browser(browser_rows) if browser_rows else {}
     for r in chosen:
@@ -394,6 +394,7 @@ def main() -> None:
     parser.add_argument("--only", required=True, help=f"커넥터 키 ({', '.join(BY_KEY)})")
     parser.add_argument("--dump", action="store_true", help="표본 상세 페이지 글자를 출력만 한다")
     parser.add_argument("--lines", type=int, default=40)
+    parser.add_argument("--urls", help="덤프할 상세 페이지 주소(쉼표 구분). 없으면 종류별 표본")
     parser.add_argument("--fix-category", action="store_true", help="비어 있는 category_raw를 사이트 카테고리로 채운다 (기본은 미리보기)")
     parser.add_argument("--apply", action="store_true", help="--fix-category를 실제로 DB에 쓴다")
     parser.add_argument("--skip", type=int, default=0, help="앞쪽 메뉴·푸터를 건너뛸 줄 수")
@@ -403,7 +404,7 @@ def main() -> None:
     rows = sample_rows([c.label for c in connectors], 0)
     print(f"활성 캠페인 {len(rows)}건")
     if args.dump:
-        dump(rows, args.lines, args.skip)
+        dump(rows, args.lines, args.skip, set(args.urls.split(",")) if args.urls else None)
         return
     key = connectors[0].key
     if args.fix_category:
