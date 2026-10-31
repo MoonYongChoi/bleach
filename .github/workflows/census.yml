@@ -1,0 +1,41 @@
+name: Census against source sites
+
+# 활성 캠페인의 분류(카테고리·체험 종류·리뷰 채널·지역)까지 원본 상세 페이지와 전수 대조 (scraper/census.py).
+# DB에는 쓰지 않는다. 결과는 실행 로그와 Summary 탭에 남는다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "커넥터 키 하나 (pavlovu / reviewnote / revu / dinnerqueen / modublog)"
+        required: true
+      dump:
+        description: "표본 상세 페이지 글자만 출력 (추출 규칙 조사용)"
+        type: boolean
+        default: true
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Census
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REVU_ID: ${{ secrets.REVU_ID }}
+          REVU_PW: ${{ secrets.REVU_PW }}
+        run: |
+          args=""
+          if [ "${{ inputs.dump }}" = "true" ]; then args="--dump"; fi
+          python census.py --only "${{ inputs.only }}" $args
