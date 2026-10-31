@@ -6,13 +6,18 @@ import { Input } from "@/components/ui/input";
 /** 로고의 푸른 물방울은 "빨래 푸르름" — 흰 빨래를 더 희게 보이게 하는 한 방울에서 따왔다 */
 function Wordmark() {
   return (
-    <div className="flex shrink-0 items-center gap-1.5" aria-label="BLEACH, 블로그 체험단 서치">
-      <svg viewBox="0 0 16 20" className="h-5 w-4 text-primary" aria-hidden>
-        <path d="M8 1C8 1 1.5 8.4 1.5 12.6A6.5 6.5 0 0 0 14.5 12.6C14.5 8.4 8 1 8 1Z" fill="currentColor" />
-        <path d="M5 12.8a3.2 3.2 0 0 0 2.6 3.1" stroke="white" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity=".8" />
-      </svg>
-      <span className="font-display text-[21px] font-extrabold leading-none tracking-[-0.04em] text-foreground">
-        bleach
+    <div className="flex shrink-0 flex-col gap-1" aria-label="bleach, 블로그 리뷰체험 서치">
+      <div className="flex items-center gap-1.5">
+        <svg viewBox="0 0 16 20" className="h-5 w-4 text-primary" aria-hidden>
+          <path d="M8 1C8 1 1.5 8.4 1.5 12.6A6.5 6.5 0 0 0 14.5 12.6C14.5 8.4 8 1 8 1Z" fill="currentColor" />
+          <path d="M5 12.8a3.2 3.2 0 0 0 2.6 3.1" stroke="white" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity=".8" />
+        </svg>
+        <span className="font-display text-[21px] font-extrabold leading-none tracking-[-0.04em] text-foreground">
+          bleach
+        </span>
+      </div>
+      <span className="text-[10px] font-medium leading-none text-muted-foreground" aria-hidden>
+        블로그 리뷰체험 서치
       </span>
     </div>
   );
