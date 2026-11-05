@@ -24,7 +24,7 @@ from datetime import date
 import requests
 from bs4 import BeautifulSoup
 
-from connectors import BY_KEY, BY_LABEL, REGISTRY
+from connectors import BY_KEY, BY_LABEL, DEFAULT_REGISTRY
 from normalize import today_kst
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (BleachBot/1.0; +https://bleach.app)"}
@@ -382,7 +382,7 @@ def main() -> None:
     parser.add_argument("--only", help=f"쉼표로 구분한 커넥터 키 ({', '.join(BY_KEY)})")
     args = parser.parse_args()
 
-    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
+    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else DEFAULT_REGISTRY
     rows = sample_rows([c.label for c in connectors], args.per)
     if args.images_only:
         audit_images(rows)

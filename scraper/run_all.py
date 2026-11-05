@@ -12,7 +12,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from connectors import BY_KEY, REGISTRY, Connector
+from connectors import BY_KEY, DEFAULT_REGISTRY, Connector
 from normalize import normalize_all
 from quality import print_report
 
@@ -54,7 +54,7 @@ def main() -> None:
 
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
 
-    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
+    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else DEFAULT_REGISTRY
 
     raw_campaigns: list = []
     run_log: list[dict] = []

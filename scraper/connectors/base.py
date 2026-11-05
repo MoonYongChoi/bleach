@@ -113,6 +113,9 @@ class Connector:
     # 브라우저로 열 때 쓸 User-Agent (기본 HeadlessChrome을 막는 사이트용)
     browser_user_agent: ClassVar[Optional[str]] = None
     required_env: ClassVar[tuple[str, ...]] = ()
+    # 데이터센터(해외·국내 클라우드) IP를 막는 사이트: GitHub Actions 기본 실행에서는 빼고,
+    # 가정용 인터넷 PC에서 --only <key>로 따로 돌린다 (서울오빠)
+    local_only: ClassVar[bool] = False
     # 이 플랫폼 고유의 유형/채널 표기 -> 표준값. 공통 한국어 표기("방문", "배송" 등)는 normalize에 있다.
     type_hints: ClassVar[dict[str, str]] = {}
     channel_hints: ClassVar[dict[str, str]] = {}

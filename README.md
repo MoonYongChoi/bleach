@@ -67,3 +67,20 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - Vercel 환경변수 `ADMIN_PASSWORD`(필수), `ADMIN_USER`(선택, 기본 `admin`)
 - `ADMIN_PASSWORD`가 없으면 /admin은 404
 - 수집 회차 기록은 `scraper/run_all.py`가 `scrape_runs` 테이블에 남긴다 (`supabase/migrations/20261105_scrape_runs.sql`)
+
+## 서울오빠 수집 (가정용 PC)
+
+서울오빠는 데이터센터 IP(GitHub Actions, Vercel 서울 리전)의 접속을 막아 정기 수집에서 빠져 있다 (`local_only`).
+집·사무실 PC에서 따로 돌린다.
+
+```bash
+git clone https://github.com/MoonYongChoi/bleach.git && cd bleach/scraper
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+# 저장소 루트의 .env.local 에 DATABASE_URL=... (Supabase → Connect → Session pooler 주소)
+python run_all.py --only seoulouba --dry-run   # 수집·정제만, DB에 안 씀
+python run_all.py --only seoulouba             # 적재 (/admin 수집 회차에 기록됨)
+python reaper.py --only seoulouba --apply      # 목록에서 빠진 캠페인 종료 처리
+```
+
+하루 몇 번 돌리려면 cron(Mac/Linux) 또는 작업 스케줄러(Windows)에 위 적재 명령을 등록한다.

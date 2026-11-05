@@ -50,7 +50,8 @@
   - [ ] 실제 페이지로 채널 셀렉터 확인 (파블로 `.pvc_pl i`, 레뷰 카드 아이콘 alt, 리뷰노트 `channel` 값 종류)
 - [ ] `platforms` 테이블 + `campaigns.platform`을 키(revu 등)로 전환, 프론트 PLATFORMS 상수 제거
 - [x] 신규 커넥터: 디너의여왕, 모두블로그
-- [ ] 보류: 서울오빠·강남맛집 — GitHub(해외) 서버에서 접속이 막힘. 필요하면 Vercel 서울 리전 경유 수집으로 재검토 (서울오빠 커넥터는 git 기록에 있음)
+- [x] 서울오빠: 데이터센터 IP 차단(GitHub·Vercel 서울 리전 모두 시간초과) → 가정용 PC에서 `--only seoulouba`로 수집 (README "서울오빠 수집")
+- [ ] 보류: 강남맛집 — GitHub(해외) 서버에서 접속이 막힘
 - [ ] `scrape_runs` 수집 기록 테이블 + Actions를 커넥터별 matrix로 분리
 - [ ] 크롤링 실패/차단 대응 로직(재시도, 로그) 보강 — 현재는 플랫폼별 try/except로 한 곳 실패해도 나머지는 계속 진행하는 수준
 

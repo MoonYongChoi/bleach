@@ -8,11 +8,13 @@ from connectors.modublog import ModublogConnector
 from connectors.pavlovu import PavlovuConnector
 from connectors.reviewnote import ReviewnoteConnector
 from connectors.revu import RevuConnector
+from connectors.seoulouba import SeouloubaConnector
 
 REGISTRY: list[Connector] = [
     PavlovuConnector(),
     ReviewnoteConnector(),
     RevuConnector(),
+    SeouloubaConnector(),
     DinnerqueenConnector(),
     ModublogConnector(),
 ]
@@ -21,4 +23,7 @@ BY_KEY: dict[str, Connector] = {c.key: c for c in REGISTRY}
 # 현재 campaigns.platform 에는 표시 이름이 들어 있다 (키로 바꾸는 건 platforms 테이블 도입 때).
 BY_LABEL: dict[str, Connector] = {c.label: c for c in REGISTRY}
 
-__all__ = ["BY_KEY", "BY_LABEL", "REGISTRY", "Connector", "RawCampaign"]
+__all__ = ["BY_KEY", "BY_LABEL", "DEFAULT_REGISTRY", "REGISTRY", "Connector", "RawCampaign"]
+
+# --only 없이 돌릴 때(GitHub Actions 정기 실행)의 대상: 가정용 PC 전용 커넥터는 뺀다
+DEFAULT_REGISTRY: list[Connector] = [c for c in REGISTRY if not c.local_only]

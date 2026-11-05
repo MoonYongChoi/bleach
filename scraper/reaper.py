@@ -22,7 +22,7 @@ import argparse
 import os
 from collections import Counter, defaultdict
 
-from connectors import BY_KEY, BY_LABEL, REGISTRY
+from connectors import BY_KEY, BY_LABEL, DEFAULT_REGISTRY
 from verify import CLOSED_RE, compact, fetch_static, fetch_with_browser, uses_browser
 
 # 한 플랫폼에서 이 비율 넘게 "사라짐"으로 나오면 검사 쪽 문제로 보고 그 플랫폼은 적용하지 않는다
@@ -90,7 +90,7 @@ def main() -> None:
     parser.add_argument("--only", help=f"쉼표로 구분한 커넥터 키 ({', '.join(BY_KEY)})")
     args = parser.parse_args()
 
-    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
+    connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else DEFAULT_REGISTRY
     rows = load_stale_rows([c.label for c in connectors], args.stale_hours, args.per)
     print(f"검사 대상 {len(rows)}건 (최근 {args.stale_hours}시간 동안 수집 목록에 없던 활성 캠페인)")
 
