@@ -275,14 +275,14 @@ export function todayKst(): string {
 }
 
 /** 마감까지 남은 일수 (한국 시간 기준). deadline_date는 이미 KST 날짜로 저장돼 있다. */
-export function dDay(deadlineDate: string | null): number | null {
+export function dDay(deadlineDate: string | null, today: string = todayKst()): number | null {
   if (!deadlineDate) return null;
   // 두 날짜를 모두 UTC 자정으로 놓고 빼면 기기 시간대·서머타임 영향 없이 날짜 차이만 남는다
   const toUtc = (ymd: string) => {
     const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
     return Date.UTC(y, m - 1, d);
   };
-  return Math.round((toUtc(deadlineDate) - toUtc(todayKst())) / 86400000);
+  return Math.round((toUtc(deadlineDate) - toUtc(today)) / 86400000);
 }
 
 

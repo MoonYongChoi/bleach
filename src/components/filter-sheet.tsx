@@ -11,39 +11,14 @@ import {
   REVIEW_CHANNEL_LABELS,
   type ApplyRateRange,
   type FilterOptions,
-  type SortOption,
 } from "@/lib/campaigns";
 import { cn } from "cn";
+import { EMPTY_FILTER_STATE, type FilterState } from "@/lib/filter-state";
 
 export type FilterSection = "type" | "region" | "category" | "channel" | "platform" | "applyRate";
 
-export interface FilterState {
-  types: string[];
-  sidos: string[];
-  /** "경기 하남시" 형태 — campaigns.ts gugunKey() */
-  guguns: string[];
-  categories: string[];
-  channels: string[];
-  platforms: string[];
-  applyRate: ApplyRateRange | null;
-  favoritesOnly: boolean;
-  sort: SortOption;
-  /** 마감임박순일 때 상시모집(마감일 없음)도 보여줄지 */
-  includeOpenEnded: boolean;
-}
-
-export const EMPTY_FILTER_STATE: FilterState = {
-  types: [],
-  sidos: [],
-  guguns: [],
-  categories: [],
-  channels: [],
-  platforms: [],
-  applyRate: null,
-  favoritesOnly: false,
-  sort: "deadline",
-  includeOpenEnded: true,
-};
+// 필터 상태 타입과 기본값은 서버에서도 쓰여서 lib/filter-state.ts에 있다
+export { EMPTY_FILTER_STATE, type FilterState };
 
 /** 정렬·관심 보기를 뺀 "걸러내는 조건" 개수 — 필터 버튼 배지에 쓴다. */
 export function activeFilterCount(f: FilterState) {

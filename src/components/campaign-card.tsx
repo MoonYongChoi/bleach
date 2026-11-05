@@ -11,10 +11,12 @@ import {
   dDay,
   REVIEW_CHANNEL_LABELS,
 } from "@/lib/campaigns";
+import { useTodayKst } from "@/lib/use-today";
 import { cn } from "cn";
 
 /** 썸네일 왼쪽 아래에 얹는 마감 표시. 3일 이하는 코랄로 눈에 띄게. */
 function DeadlineTag({ deadlineDate }: { deadlineDate: string | null }) {
+  const today = useTodayKst();
   if (!deadlineDate) {
     return (
       <span className="rounded-md bg-foreground/70 px-1.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm">
@@ -22,7 +24,15 @@ function DeadlineTag({ deadlineDate }: { deadlineDate: string | null }) {
       </span>
     );
   }
-  const d = dDay(deadlineDate)!;
+  if (!today) {
+    // 서버 HTML과 첫 렌더에는 마감 날짜를 그대로 보여 주고, 브라우저에서 오늘 날짜를 알면 D-day로 바꾼다
+    return (
+      <span className="rounded-md bg-foreground/75 px-1.5 py-0.5 font-display text-[12px] font-bold leading-none tabular-nums text-white backdrop-blur-sm">
+        {deadlineDate.slice(5, 10).replace("-", ".")}
+      </span>
+    );
+  }
+  const d = dDay(deadlineDate, today)!;
   return (
     <span
       className={cn(

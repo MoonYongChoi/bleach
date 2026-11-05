@@ -1,13 +1,7 @@
-import { cacheLife } from "next/cache";
 import { countCampaigns, parseFilters } from "@/lib/campaigns";
+import { cachedCampaignCount } from "@/lib/server-data";
 
 // 조건에 맞는 캠페인 수 ("총 N개", 필터 시트의 "N개 결과 보기"). 목록 API와 같은 캐시 전략.
-async function cachedCount(query: string) {
-  "use cache";
-  cacheLife({ stale: 60, revalidate: 300, expire: 3600 });
-  return countCampaigns(parseFilters(query) ?? {});
-}
-
 export async function GET(request: Request) {
   const raw = new URL(request.url).searchParams.get("q") ?? "{}";
   const filters = parseFilters(raw);
@@ -16,7 +10,7 @@ export async function GET(request: Request) {
   }
   try {
     const searching = Boolean(filters.search);
-    const total = searching ? await countCampaigns(filters) : await cachedCount(raw);
+    const total = searching ? await countCampaigns(filters) : await cachedCampaignCount(raw);
     return Response.json(
       { total },
       {
