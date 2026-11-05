@@ -13,7 +13,9 @@ import { SortSheet } from "@/components/sort-sheet";
 import { PlatformRequestSheet } from "@/components/platform-request-sheet";
 import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { Button } from "@/components/ui/button";
+import { AdSlot } from "@/components/ad-slot";
 import { EmptyState } from "@/components/empty-state";
+import { adAfter } from "@/lib/ads";
 import { loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
 import {
   PAGE_SIZE,
@@ -214,7 +216,7 @@ export default function Home() {
           <EmptyState onReset={resetFilters} />
         ) : (
           <ul className="divide-y divide-border">
-            {campaigns.map((campaign, i) => (
+            {campaigns.flatMap((campaign, i) => [
               <CampaignCard
                 key={campaign.id}
                 campaign={campaign}
@@ -222,8 +224,10 @@ export default function Home() {
                 intro={intro}
                 favorite={favorites.isFavorite(campaign.id)}
                 onToggleFavorite={() => favorites.toggle(campaign.id)}
-              />
-            ))}
+              />,
+              // 광고는 캠페인이 있는 목록 안에만 (로딩·오류·결과 없음 화면에는 넣지 않는다 — AdSense 정책)
+              ...(adAfter(i) ? [<AdSlot key={`ad-${i}`} />] : []),
+            ])}
             {loadingMore && [0, 1].map((i) => <CampaignCardSkeleton key={`more-${i}`} />)}
           </ul>
         )}

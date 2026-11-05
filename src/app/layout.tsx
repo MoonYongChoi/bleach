@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_KR, Bricolage_Grotesque } from "next/font/google";
+import { AdsenseScript } from "@/components/adsense-script";
 import "./globals.css";
 
 // 본문: 한글 가독성이 좋고 숫자가 단정한 IBM Plex Sans KR
@@ -26,6 +27,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="ko"
       className={`${plexKr.variable} ${bricolage.variable} h-full antialiased`}
     >
+      <head>
+        <AdsenseScript />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
