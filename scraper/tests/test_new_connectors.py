@@ -11,7 +11,7 @@ from connectors import BY_KEY  # noqa: E402
 from connectors.base import split_title_brackets  # noqa: E402
 from connectors.dinnerqueen import parse_cards  # noqa: E402
 from connectors.modublog import to_raw  # noqa: E402
-from connectors.seoulouba import parse_list  # noqa: E402
+from connectors.seoulouba import SeouloubaConnector, parse_list, with_area_hint  # noqa: E402
 from normalize import normalize_for  # noqa: E402
 
 TODAY = date(2026, 10, 29)
@@ -66,6 +66,70 @@ class SeouloubaTest(unittest.TestCase):
         self.assertEqual(reporter["title"], "멜킨 스마트 스텝플립 프로")
         # 카드 태그는 "배송형"이지만 제목에 [촬영기자단] — 카드 태그를 우선한다
         self.assertIn(reporter["campaign_type"], ("배송", "기자단"))
+
+    def test_closed_cards_are_skipped(self):
+        html = fixture("seoulouba_cards.html").replace("<span> D-day</span>", "<span>마감</span>", 1)
+        raws = parse_list(html, "방문형")
+        self.assertEqual(len(raws), 2)
+        self.assertNotIn("?c=429685", " ".join(r.source_url for r in raws))
+
+    def test_site_category_and_dday(self):
+        html = fixture("seoulouba_cards.html").replace("<span> D-day</span>", "<span>D-6</span>", 1)
+        raw = parse_list(html, "방문형", "뷰티/패션")[0]
+        r = norm("seoulouba", raw)
+        self.assertEqual(r["category_raw"], "뷰티/패션")
+        self.assertEqual(r["category"], "뷰티")
+        self.assertEqual(r["deadline_date"].toordinal() - TODAY.toordinal(), 6)
+
+    def test_area_hint_fills_sido(self):
+        raw = parse_list(fixture("seoulouba_cards.html").replace("[인천/서구]", "[가산]"), "방문형")[0]
+        self.assertIsNone(norm("seoulouba", raw)["region_sido"])
+        r = norm("seoulouba", with_area_hint(raw, "서울"))
+        self.assertEqual(r["region_sido"], "서울")
+        # 제목 괄호로 이미 시/도가 정해지면 손대지 않는다
+        raw2 = with_area_hint(parse_list(fixture("seoulouba_cards.html"), "방문형")[0], "서울")
+        self.assertEqual(norm("seoulouba", raw2)["region_sido"], "인천")
+
+    def test_paging_until_closed_page(self):
+        cards = fixture("seoulouba_cards.html")
+        one = cards.split("</li>")[0] + "</li>"
+
+        def card(i, closed=False):
+            c = one.replace("429685", str(500000 + i))
+            return c.replace("<span> D-day</span>", "<span>마감</span>") if closed else c
+
+        first = "<ul>" + "".join(card(i) for i in range(192)) + "</ul>"
+        page2 = "".join(card(192 + i) for i in range(36))
+        page3 = "".join(card(300 + i, closed=True) for i in range(36))
+        calls = []
+
+        class Resp:
+            def __init__(self, text):
+                self.text = text
+
+            def raise_for_status(self):
+                pass
+
+        class Session:
+            headers: dict = {}
+
+            def request(self, method, url, **kw):
+                calls.append((method, kw.get("data", {}).get("more")))
+                if method == "GET":
+                    return Resp(first)
+                return Resp({192: page2, 228: page3}.get(kw["data"]["more"], ""))
+
+        import connectors.seoulouba as so
+        so.DELAY, delay = 0, so.DELAY
+        try:
+            c = SeouloubaConnector()
+            c.session = Session()
+            got = c._list("378", "방문형", "맛집")
+        finally:
+            so.DELAY = delay
+        self.assertEqual(len(got), 228)  # 192 + 36, 통째로 마감인 3쪽에서 멈춤
+        self.assertEqual(calls, [("GET", None), ("POST", 192), ("POST", 228)])
+        self.assertTrue(all(r.category_raw == "맛집" for r in got))
 
 
 class DinnerqueenTest(unittest.TestCase):
