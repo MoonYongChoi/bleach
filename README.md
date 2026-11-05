@@ -42,7 +42,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 | 상태 | 조건 | 나오는 것 |
 |---|---|---|
 | 연결 | 게시자 ID(기본값 `ca-pub-2018630083097143`)가 올바름 | `<head>`의 AdSense 코드 |
-| 목록 광고 | 위 + `NEXT_PUBLIC_ADSENSE_SLOT`(광고 단위 ID) 설정 | 캠페인 8개마다 광고 한 칸, 최대 6칸 |
+| 목록 광고 | 위 + 광고 단위 ID(기본값 피드 내 광고 `1293649683`, layout key `-fi+6j-17-cv+rc`) | 캠페인 8개마다 광고 한 칸, 최대 6칸 |
 
 광고 단위 ID가 없으면 목록에는 광고 칸이 생기지 않는다. 켜는 순서:
 
