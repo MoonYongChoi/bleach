@@ -18,7 +18,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 const TITLE = "bleach — 블로그 리뷰체험 서치";
-const DESCRIPTION = "레뷰·리뷰노트·디너의여왕·모두블로그·파블로의 체험단 모집을 한곳에서. 지역·카테고리·리뷰 채널로 거르고 경쟁률 낮은 곳부터 골라 보세요.";
+const DESCRIPTION = "다양한 블로그 체험단 모집을 한곳에서. 지역·카테고리·리뷰 채널로 거르고 경쟁률 낮은 곳부터 골라 보세요.";
 
 // og:image는 같은 폴더의 opengraph-image.png를 Next.js가 자동으로 넣는다 (metadataBase 기준 절대 주소)
 export const metadata: Metadata = {
