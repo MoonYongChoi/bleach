@@ -37,16 +37,16 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## 광고 (Google AdSense)
 
-코드는 `src/lib/ads.ts`, `src/components/ad-slot.tsx`, `src/components/adsense-script.tsx`, `src/app/ads.txt/route.ts`.
+코드는 `src/lib/ads.ts`, `src/components/ad-slot.tsx`, `src/components/adsense-script.tsx`.
 
 | 상태 | 조건 | 나오는 것 |
 |---|---|---|
-| 연결 | 게시자 ID(기본값 `ca-pub-2018630083097143`)가 올바름 | `<head>`의 AdSense 코드 + `/ads.txt` |
+| 연결 | 게시자 ID(기본값 `ca-pub-2018630083097143`)가 올바름 | `<head>`의 AdSense 코드 |
 | 목록 광고 | 위 + `NEXT_PUBLIC_ADSENSE_SLOT`(광고 단위 ID) 설정 | 캠페인 8개마다 광고 한 칸, 최대 6칸 |
 
 광고 단위 ID가 없으면 목록에는 광고 칸이 생기지 않는다. 켜는 순서:
 
-1. AdSense에서 사이트 연결·소유 확인 (`<head>` 코드와 `/ads.txt`는 이미 나온다).
+1. AdSense에서 사이트 연결·소유 확인 (확인 방법은 "애드센스 코드 스니펫". `<head>` 코드는 이미 나온다). `/ads.txt`는 넣지 않았다. AdSense가 요구하면 `google.com, pub-2018630083097143, DIRECT, f08c47fec0942fa0` 한 줄짜리 경로를 다시 만든다.
 2. AdSense → 광고 → 광고 단위 → **피드 내 광고**를 만들고, 광고 단위 ID(숫자)를 Vercel 환경변수 `NEXT_PUBLIC_ADSENSE_SLOT`에 넣고 다시 배포한다. 피드형의 layout key가 있으면 `NEXT_PUBLIC_ADSENSE_LAYOUT_KEY`에도 넣는다.
 3. AdSense의 "자동 광고"를 켜 두면 코드가 넣은 칸과 별개로 광고가 추가로 붙는다. 목록 UX를 직접 관리하려면 자동 광고는 끈다.
 

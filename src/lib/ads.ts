@@ -4,7 +4,8 @@
 //   NEXT_PUBLIC_ADSENSE_SLOT        광고 단위 ID (숫자). AdSense에서 "피드 내 광고" 단위를 만들어 넣으면 목록 사이 광고 칸이 켜진다.
 //   NEXT_PUBLIC_ADSENSE_LAYOUT_KEY  (선택) 피드형 광고의 layout key. 없으면 반응형 자동 크기.
 //
-// - 게시자 ID만 있으면: <head>에 AdSense 코드와 /ads.txt가 나온다 (사이트 연결·소유 확인용). 광고 칸은 없다.
+// - 게시자 ID만 있으면: <head>에 AdSense 코드가 나온다 (사이트 연결·소유 확인용). 광고 칸은 없다.
+//   (/ads.txt는 넣지 않았다. 나중에 AdSense가 요구하면 `google.com, pub-<ID>, DIRECT, f08c47fec0942fa0` 한 줄짜리 route를 다시 만든다.)
 // - 광고 단위 ID까지 있으면: 목록 사이에 광고 칸이 들어간다.
 // 켜기 전에 확인할 것은 README의 "광고" 절 (호스팅 약관, 본인 도메인, 개인정보처리방침, 승인).
 
@@ -12,7 +13,7 @@ export const ADSENSE_CLIENT = process.env.NEXT_PUBLIC_ADSENSE_CLIENT || "ca-pub-
 export const ADSENSE_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT ?? "";
 export const ADSENSE_LAYOUT_KEY = process.env.NEXT_PUBLIC_ADSENSE_LAYOUT_KEY ?? "";
 
-/** 게시자 ID가 올바른 모양일 때만 AdSense 코드와 ads.txt를 내보낸다 — 오타가 있으면 조용히 꺼진다. */
+/** 게시자 ID가 올바른 모양일 때만 AdSense 코드를 내보낸다 — 오타가 있으면 조용히 꺼진다. */
 export const scriptEnabled = /^ca-pub-\d{10,}$/.test(ADSENSE_CLIENT);
 
 /** 광고 단위 ID까지 올바를 때만 목록 사이 광고 칸을 넣는다. */
