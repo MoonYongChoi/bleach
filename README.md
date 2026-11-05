@@ -59,3 +59,11 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - **수집 대상 사이트의 약관·robots**: 수익이 생기면 법적 위험이 달라진다.
 
 광고는 캠페인이 있는 목록 안에만 들어가고, 로딩·오류·결과 없음 화면에는 넣지 않는다 (AdSense 정책).
+
+## 관리 페이지 (/admin)
+
+수집 현황(플랫폼별 상태, 수집 회차별 결과, 새 캠페인이 들어온 시각)을 보는 페이지. Basic 인증으로 막혀 있다.
+
+- Vercel 환경변수 `ADMIN_PASSWORD`(필수), `ADMIN_USER`(선택, 기본 `admin`)
+- `ADMIN_PASSWORD`가 없으면 /admin은 404
+- 수집 회차 기록은 `scraper/run_all.py`가 `scrape_runs` 테이블에 남긴다 (`supabase/migrations/20261105_scrape_runs.sql`)

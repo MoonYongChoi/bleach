@@ -9,24 +9,39 @@ from __future__ import annotations
 
 import argparse
 import os
+import uuid
+from datetime import datetime, timezone
 
 from connectors import BY_KEY, REGISTRY, Connector
 from normalize import normalize_all
 from quality import print_report
 
 
-def run(connector: Connector) -> list:
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def run(connector: Connector, log: list[dict] | None = None) -> list:
+    """커넥터 하나를 돌린다. log를 주면 플랫폼별 수집 기록(scrape_runs 한 줄)을 덧붙인다."""
+    entry = {"platform": connector.label, "started_at": _now(), "status": "ok", "fetched": 0, "error": None}
+    result: list = []
     missing = [name for name in connector.required_env if not os.environ.get(name)]
     if missing:
         print(f"[{connector.label}] 건너뜀: 환경변수 {', '.join(missing)} 없음")
-        return []
-    try:
-        items = connector.fetch()
-        print(f"[{connector.label}] 수집 {len(items)}건")
-        return [(connector, item) for item in items]
-    except Exception as e:  # noqa: BLE001 - 한 플랫폼 실패가 전체를 막으면 안 됨
-        print(f"[{connector.label}] 실패: {e}")
-        return []
+        entry.update(status="skipped", error=f"환경변수 없음: {', '.join(missing)}")
+    else:
+        try:
+            items = connector.fetch()
+            print(f"[{connector.label}] 수집 {len(items)}건")
+            entry["fetched"] = len(items)
+            result = [(connector, item) for item in items]
+        except Exception as e:  # noqa: BLE001 - 한 플랫폼 실패가 전체를 막으면 안 됨
+            print(f"[{connector.label}] 실패: {e}")
+            entry.update(status="failed", error=f"{type(e).__name__}: {e}")
+    entry["finished_at"] = _now()
+    if log is not None:
+        log.append(entry)
+    return result
 
 
 def main() -> None:
@@ -42,8 +57,9 @@ def main() -> None:
     connectors = [BY_KEY[k.strip()] for k in args.only.split(",")] if args.only else REGISTRY
 
     raw_campaigns: list = []
+    run_log: list[dict] = []
     for connector in connectors:
-        raw_campaigns += run(connector)
+        raw_campaigns += run(connector, run_log)
 
     records, report = normalize_all(raw_campaigns)
     print_report(report)
@@ -54,7 +70,8 @@ def main() -> None:
 
     from loader import upsert_campaigns
 
-    n, expired = upsert_campaigns(records)
+    run_id = str(uuid.uuid4())
+    n, expired = upsert_campaigns(records, [{**e, "run_id": run_id} for e in run_log])
     print(f"총 {len(raw_campaigns)}건 수집 → {n}건 upsert, 마감 지난 {expired}건 비활성화")
 
 

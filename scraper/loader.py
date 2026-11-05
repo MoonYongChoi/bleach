@@ -68,8 +68,22 @@ _COLUMNS = {
 }
 
 
-def upsert_campaigns(campaigns: list[dict]) -> tuple[int, int]:
-    """(upsert 건수, 마감 지나 비활성화된 건수)."""
+# 한 트랜잭션 안에서 now()는 같으므로, 이번에 처음 들어온 행은 created_at = now()인 행이다.
+NEW_COUNT_SQL = "select platform, count(*) from public.campaigns where created_at = now() group by platform"
+
+RUN_SQL = """
+insert into public.scrape_runs (run_id, platform, started_at, finished_at, status, fetched, saved, new_count, error)
+values (%(run_id)s, %(platform)s, %(started_at)s, %(finished_at)s, %(status)s, %(fetched)s, %(saved)s,
+        %(new_count)s, %(error)s)
+"""
+
+
+def upsert_campaigns(campaigns: list[dict], runs: list[dict] | None = None) -> tuple[int, int]:
+    """(upsert 건수, 마감 지나 비활성화된 건수).
+
+    runs를 주면 플랫폼별 수집 기록(scrape_runs)도 같은 트랜잭션에 남긴다 (/admin 페이지에서 본다).
+    각 항목: run_id, platform, started_at, finished_at, status, fetched, error. saved·new_count는 여기서 채운다.
+    """
     rows = [
         {**_DEFAULTS, **{k: v for k, v in c.items() if k in _COLUMNS}}
         for c in campaigns
@@ -83,6 +97,21 @@ def upsert_campaigns(campaigns: list[dict]) -> tuple[int, int]:
                 psycopg2.extras.execute_batch(cur, UPSERT_SQL, rows, page_size=100)
             cur.execute(EXPIRE_SQL)
             expired = cur.rowcount
+            if runs:
+                cur.execute(NEW_COUNT_SQL)
+                new_by_platform = dict(cur.fetchall())
+                saved_by_platform: dict[str, int] = {}
+                for r in rows:
+                    saved_by_platform[r["platform"]] = saved_by_platform.get(r["platform"], 0) + 1
+                psycopg2.extras.execute_batch(cur, RUN_SQL, [
+                    {
+                        **r,
+                        "saved": saved_by_platform.get(r["platform"], 0),
+                        "new_count": new_by_platform.get(r["platform"], 0),
+                        "error": (r.get("error") or None) and str(r["error"])[:300],
+                    }
+                    for r in runs
+                ])
         return len(rows), expired
     finally:
         conn.close()
