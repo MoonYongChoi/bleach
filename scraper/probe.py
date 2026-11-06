@@ -183,6 +183,67 @@ def probe_scroll(url: str, selector: str, scrolls: int = 30, login_key: str | No
         browser.close()
 
 
+def probe_revu_api() -> None:
+    """레뷰 목록 API 조사: 로그인한 브라우저가 부르는 /v1/campaigns 요청을 잡아 주소·헤더 이름을 보고,
+    같은 헤더로 다음 페이지를 직접 불러 응답 모양(키, 항목 하나 전체)을 찍는다."""
+    import json
+
+    from playwright.sync_api import sync_playwright
+
+    from connectors import BY_KEY
+
+    print("\n===== [레뷰 API 조사]")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        BY_KEY["revu"].prepare_browser(context)
+        page = context.new_page()
+        captured: list = []
+        page.on("request", lambda r: captured.append(r) if "/v1/campaigns" in r.url else None)
+        page.goto("https://www.revu.net/category/지역", wait_until="networkidle", timeout=45000)
+        page.wait_for_timeout(1500)
+        if not captured:
+            print("  /v1/campaigns 요청을 못 잡음")
+            browser.close()
+            return
+        req = captured[0]
+        print("  주소:", req.url)
+        headers = req.all_headers()
+        print("  헤더 이름:", sorted(headers))
+        print("  authorization 있음:", "authorization" in headers)
+        send = {k: v for k, v in headers.items() if not k.startswith(":") and k not in ("content-length", "host")}
+        from urllib.parse import parse_qsl, urlencode, urlparse as up
+
+        u = up(req.url)
+        q = parse_qsl(u.query, keep_blank_values=True)
+        print("  쿼리:", q)
+        for label, change in (("page=2", {"page": "2"}), ("limit=100", {"limit": "100"}), ("page=40", {"page": "40"})):
+            q2 = [(k, change.get(k, v)) for k, v in q]
+            keys = {k for k, _ in q2}
+            q2 += [(k, v) for k, v in change.items() if k not in keys]
+            url = u._replace(query=urlencode(q2)).geturl()
+            r = context.request.get(url, headers=send)
+            body = r.text()
+            print(f"\n  [{label}] status {r.status} {len(body)}B")
+            try:
+                data = json.loads(body)
+            except Exception:  # noqa: BLE001
+                print("   ", body[:300])
+                continue
+            if isinstance(data, dict):
+                print("   최상위 키:", list(data)[:20], {k: v for k, v in data.items() if not isinstance(v, (list, dict))})
+                items = data.get("items") or []
+                print("   items:", len(items), "첫 id/마지막 id:", items[0].get("id") if items else None, items[-1].get("id") if items else None)
+                if label == "page=2" and items:
+                    print("   항목 하나 전체:", json.dumps(items[0], ensure_ascii=False)[:4000])
+        # 제품 목록도 같은 API인지
+        captured.clear()
+        page.goto("https://www.revu.net/category/제품", wait_until="networkidle", timeout=45000)
+        page.wait_for_timeout(1000)
+        print("\n  제품 목록 요청:", captured[0].url if captured else "(없음)")
+        browser.close()
+
+
 def probe_text(url: str) -> None:
     """상세 페이지의 보이는 글자를 줄 단위로 그대로 출력 — 날짜·인원이 어떤 문장으로 적혀 있는지 본다."""
     print(f"\n===== [페이지 글자] {url}")
@@ -214,6 +275,9 @@ if __name__ == "__main__":
     if args and args[0] == "--text":  # python probe.py --text <url> [<url> ...]
         for target in args[1:]:
             probe_text(target)
+        sys.exit(0)
+    if args and args[0] == "--revu-api":  # python probe.py --revu-api
+        probe_revu_api()
         sys.exit(0)
     if args and args[0] == "--scroll":  # python probe.py --scroll <url> <css selector> [스크롤 횟수]
         probe_scroll(args[1], args[2], int(args[3]) if len(args) > 3 else 30, args[4] if len(args) > 4 else None)
