@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       urls:
-        description: "조사할 목록 페이지 URL (공백으로 여러 개). --cards 로 시작하면 카드 전체 HTML 출력: --cards <url> <css 선택자>"
+        description: "조사할 URL (공백 구분). --cards <url> <선택자> | --scroll <url> <선택자> [스크롤수] [로그인 커넥터키]"
         required: true
 
 jobs:
@@ -28,4 +28,7 @@ jobs:
       - name: Probe
         env:
           URLS: ${{ inputs.urls }}
+          # --scroll ... revu 처럼 로그인이 필요한 목록 조사용
+          REVU_ID: ${{ secrets.REVU_ID }}
+          REVU_PW: ${{ secrets.REVU_PW }}
         run: python probe.py $URLS

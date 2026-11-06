@@ -110,7 +110,7 @@ def probe_cards_detail(url: str, selector: str, n: int = 6) -> None:
         browser.close()
 
 
-def probe_scroll(url: str, selector: str, scrolls: int = 30) -> None:
+def probe_scroll(url: str, selector: str, scrolls: int = 30, login_key: str | None = None) -> None:
     """무한스크롤 목록 조사: 스크롤마다 카드 수와 XHR(POST 본문 포함)을 찍고, 언제 멈추는지 본다.
     같은 사이트 첫 화면을 먼저 열어 봇 확인 쿠키를 받는다."""
     from playwright.sync_api import sync_playwright
@@ -120,14 +120,21 @@ def probe_scroll(url: str, selector: str, scrolls: int = 30) -> None:
         browser = p.chromium.launch()
         context = browser.new_context()
         base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-        warm = context.new_page()
-        warm.goto(base, wait_until="networkidle", timeout=45000)
-        warm.close()
+        if login_key:  # 로그인이 필요한 목록 (예: revu) — 커넥터의 로그인 절차를 그대로 쓴다
+            from connectors import BY_KEY
+
+            BY_KEY[login_key].prepare_browser(context)
+        else:
+            warm = context.new_page()
+            warm.goto(base, wait_until="networkidle", timeout=45000)
+            warm.close()
         page = context.new_page()
         log: list[str] = []
 
         def on_response(r):
             if r.request.resource_type not in ("xhr", "fetch"):
+                return
+            if re.search(r"google|doubleclick|adtraffic|facebook|kakao|naver\.com|analytics|clarity|hotjar", r.url):
                 return
             body = r.request.post_data or ""
             try:
@@ -155,6 +162,11 @@ def probe_scroll(url: str, selector: str, scrolls: int = 30) -> None:
             if stuck >= 3:
                 print("  3번 연속 그대로라 멈춤")
                 break
+        cards = page.locator(selector)
+        total = cards.count()
+        for i in sorted({0, total // 2, max(total - 1, 0)}):
+            if total:
+                print(f"  카드 #{i} 글자:", re.sub(r"\s+", " ", cards.nth(i).inner_text())[:200])
         print("  XHR/fetch 요청 (처음 12개 + 마지막 4개):")
         for line in log[:12] + (["   ..."] if len(log) > 16 else []) + log[-4:]:
             print("   ", line[:900])
@@ -201,7 +213,7 @@ if __name__ == "__main__":
             probe_text(target)
         sys.exit(0)
     if args and args[0] == "--scroll":  # python probe.py --scroll <url> <css selector> [스크롤 횟수]
-        probe_scroll(args[1], args[2], int(args[3]) if len(args) > 3 else 30)
+        probe_scroll(args[1], args[2], int(args[3]) if len(args) > 3 else 30, args[4] if len(args) > 4 else None)
         sys.exit(0)
     if args and args[0] == "--cards":  # python probe.py --cards <url> <css selector>
         probe_cards_detail(args[1], args[2])
