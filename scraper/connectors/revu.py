@@ -41,7 +41,7 @@ from typing import Optional
 from urllib.parse import urljoin
 
 from connectors.base import Connector, RawCampaign
-from normalize import today_kst
+from normalize import CATEGORY_ALIASES, today_kst
 
 API_URL = "https://api.weble.net/v1/campaigns"
 API_LIMIT = 100
@@ -188,8 +188,9 @@ def api_item_to_raw(item: dict, cat: str, today: Optional[date] = None) -> Optio
 
     labels = [str(c) for c in (item.get("category") or [])]
     type_hint = next((c for c in labels if c in TYPE_WORDS), None) or cat
-    # "지역_맛집" / "제품_뷰티" -> 맛집 / 뷰티
-    category_raw = next((c.split("_", 1)[1] for c in labels if "_" in c), None)
+    # "지역_맛집" / "제품_뷰티" / "제품_서비스_쇼핑몰" -> 표준 분류로 읽히는 조각을 고른다 (없으면 마지막 조각)
+    parts = [part for c in labels if c not in TYPE_WORDS for part in c.split("_")[1:] or [c]]
+    category_raw = next((part for part in parts if part in CATEGORY_ALIASES), parts[-1] if parts else None)
 
     venue = item.get("venue") or {}
     address = " ".join((venue.get("addressFirst") or "").split()[:2])
@@ -225,8 +226,11 @@ def _fetch_api() -> list[RawCampaign]:
 
     from playwright.sync_api import sync_playwright
 
+    from collections import Counter
+
     campaigns: list[RawCampaign] = []
     seen: set[str] = set()
+    label_counts: Counter = Counter()
     with sync_playwright() as p:
         browser = p.chromium.launch()
         context = browser.new_context()
@@ -258,6 +262,7 @@ def _fetch_api() -> list[RawCampaign]:
                 items = data.get("items") or []
                 total = data.get("total", total)
                 for item in items:
+                    label_counts[" / ".join(map(str, item.get("category") or []))] += 1
                     raw = api_item_to_raw(item, cat)
                     if raw and raw.source_url not in seen:
                         seen.add(raw.source_url)
@@ -269,6 +274,7 @@ def _fetch_api() -> list[RawCampaign]:
             print(f"[레뷰] API cat={cat}: 사이트 총 {total}건 → 모집 중 {kept}건 수집")
         browser.close()
 
+    print(f"[레뷰] 사이트 분류 표기 상위: {label_counts.most_common(15)}")
     if not campaigns:
         raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
     return campaigns

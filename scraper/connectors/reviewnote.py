@@ -7,8 +7,10 @@
 - 객체 필드: id, title, offer(제공내역), city(시/도), sido.name(시/군/구 — 이름이 헷갈림),
   applyEndAt(UTC ISO), infNum(모집), applicantCount(신청), category.title, imageKey,
   sort(VISIT/DELIVERY/...: 유형), channel(BLOG/...: 리뷰 채널), paybackPlatform(구매 후 환급형이면 값 있음)
-- 한계: ?page= 쿼리는 서버에서 무시되고 항상 최신 96개만 내려온다. 그 이상(무한스크롤)은 별도
-  내부 API를 호출해야 해서 보류 — 필요해지면 네트워크 탭에서 XHR 엔드포인트를 다시 조사할 것.
+- 한계: ?page= 쿼리는 서버에서 무시되고 항상 최신 96개만 내려온다.
+- 2026-11-06 probe.py --js-api 조사: 무한스크롤은 GET /api/v2/campaigns?page=N&limit=16&s=default...
+  → {page, objects, has_more}. objects는 위 __NEXT_DATA__와 같은 모양이다. 사이트 밖(requests)에서
+  부르면 403이라, 브라우저로 목록을 연 뒤 그 페이지 안에서 fetch로 부른다. 실패하면 첫 96개로 대신한다.
 """
 
 from __future__ import annotations
@@ -41,6 +43,40 @@ def _image_url(image_key: Optional[str]) -> Optional[str]:
     return IMAGE_CDN + FIREBASE_IMAGE_URL.format(key=quote(image_key, safe=""))
 
 
+API_LIMIT = 100  # 사이트 화면은 16씩 부른다
+API_MAX_PAGES = 400
+
+
+def obj_to_raw(obj: dict) -> Optional[RawCampaign]:
+    """목록 객체(__NEXT_DATA__ 또는 /api/v2/campaigns) 하나 -> RawCampaign."""
+    cid = obj.get("id")
+    if cid is None:
+        return None
+    # 제목과 제공내역(offer)은 따로 저장한다 — 예전엔 "제목 - 제공내역"으로 합쳐서
+    # 카드 제목이 길어지고 description과 중복됐다.
+    title = (obj.get("title") or "").strip()
+    offer = (obj.get("offer") or "").strip()
+    channel = obj.get("channel")
+    channels = channel if isinstance(channel, list) else [channel] if channel else []
+    return RawCampaign(
+        source_url=DETAIL_URL.format(id=cid),
+        title=title or offer or None,
+        description=offer or None,
+        image_url=_image_url(obj.get("imageKey")),
+        # 필드명이 헷갈리게 되어 있다: city = 시/도("서울"), sido.name = 시/군/구("강남구")
+        region_sido=obj.get("city"),
+        region_gugun=(obj.get("sido") or {}).get("name"),
+        # ISO(UTC) 문자열 그대로 넘기면 normalize가 KST 날짜로 바꾼다.
+        deadline_date=obj.get("applyEndAt"),
+        recruit_count=obj.get("infNum"),
+        applicant_count=obj.get("applicantCount"),
+        category_raw=(obj.get("category") or {}).get("title"),
+        type_hint=obj.get("sort"),
+        channels_raw=[str(c) for c in channels],
+        is_payback=bool(obj.get("paybackPlatform")),
+    )
+
+
 class ReviewnoteConnector(Connector):
     key = "reviewnote"
     label = "리뷰노트"
@@ -69,50 +105,60 @@ class ReviewnoteConnector(Connector):
     }
 
     def fetch(self) -> list[RawCampaign]:
+        try:
+            return self._fetch_api()
+        except Exception as e:  # noqa: BLE001 - API가 막혀도 첫 화면 96개는 받는다
+            print(f"[리뷰노트] 목록 API 수집 실패 → 첫 화면만: {type(e).__name__}: {e}")
+            return self._fetch_first_page()
+
+    def _fetch_first_page(self) -> list[RawCampaign]:
         resp = requests.get(LIST_URL, headers=HEADERS, timeout=15)
         resp.raise_for_status()
-
         m = NEXT_DATA_RE.search(resp.text)
         if not m:
             return []
-
         data = json.loads(m.group(1))
         objects = data.get("props", {}).get("pageProps", {}).get("data", {}).get("objects", [])
+        return [r for r in (obj_to_raw(o) for o in objects) if r]
 
-        campaigns = []
-        for obj in objects:
-            cid = obj.get("id")
-            if cid is None:
-                continue
+    def _fetch_api(self) -> list[RawCampaign]:
+        from playwright.sync_api import sync_playwright
 
-            # 제목과 제공내역(offer)은 따로 저장한다 — 예전엔 "제목 - 제공내역"으로 합쳐서
-            # 카드 제목이 길어지고 description과 중복됐다.
-            title = (obj.get("title") or "").strip()
-            offer = (obj.get("offer") or "").strip()
-
-            channel = obj.get("channel")
-            channels = channel if isinstance(channel, list) else [channel] if channel else []
-
-            campaigns.append(
-                RawCampaign(
-                    source_url=DETAIL_URL.format(id=cid),
-                    title=title or offer or None,
-                    description=offer or None,
-                    image_url=_image_url(obj.get("imageKey")),
-                    # 필드명이 헷갈리게 되어 있다: city = 시/도("서울"), sido.name = 시/군/구("강남구")
-                    region_sido=obj.get("city"),
-                    region_gugun=(obj.get("sido") or {}).get("name"),
-                    # ISO(UTC) 문자열 그대로 넘기면 normalize가 KST 날짜로 바꾼다.
-                    deadline_date=obj.get("applyEndAt"),
-                    recruit_count=obj.get("infNum"),
-                    applicant_count=obj.get("applicantCount"),
-                    category_raw=(obj.get("category") or {}).get("title"),
-                    type_hint=obj.get("sort"),
-                    channels_raw=[str(c) for c in channels],
-                    is_payback=bool(obj.get("paybackPlatform")),
+        campaigns: list[RawCampaign] = []
+        seen: set[str] = set()
+        pages = 0
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(LIST_URL, wait_until="networkidle", timeout=45000)
+            for page_no in range(API_MAX_PAGES):
+                data = page.evaluate(
+                    """async ([n, limit]) => {
+                        const q = new URLSearchParams({s: 'default', limit, page: n});
+                        const r = await fetch('/api/v2/campaigns?' + q, {credentials: 'same-origin'});
+                        return {status: r.status, body: r.status === 200 ? await r.json() : await r.text()};
+                    }""",
+                    [page_no, API_LIMIT],
                 )
-            )
-
+                if data["status"] != 200:
+                    raise RuntimeError(f"page={page_no}: HTTP {data['status']} {str(data['body'])[:120]}")
+                body = data["body"] or {}
+                objects = body.get("objects") or []
+                pages += 1
+                new = 0
+                for obj in objects:
+                    raw = obj_to_raw(obj)
+                    if raw and raw.source_url not in seen:
+                        seen.add(raw.source_url)
+                        campaigns.append(raw)
+                        new += 1
+                if not objects or not body.get("has_more") or new == 0:
+                    break
+                page.wait_for_timeout(300)  # 사이트 부담 줄이기
+            browser.close()
+        print(f"[리뷰노트] 목록 API {pages}쪽 → 캠페인 {len(campaigns)}건")
+        if not campaigns:
+            raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
         return campaigns
 
     def from_db_row(self, row: dict) -> RawCampaign:
