@@ -35,6 +35,7 @@ _CHANNEL_BADGES = {"릴스", "클립", "쇼츠", "숏츠", "블로그", "인스�
 _CATEGORY_BADGES = {"맛집", "뷰티", "배송", "기타", "기자단", "여가", "맞춤"}
 # 제목 앞 괄호에 업체 이름 대신 들어오는 말 ("[전국][페이백][포장][교촌치킨]"에서 업체는 교촌치킨)
 _NOT_VENDOR = {"전국", "페이백", "포장", "포인트", "배달", "택배"}
+CLOSED_RE = re.compile(r"모집\s*마감|마감\s*완료|모집\s*종료|종료된")
 _NOT_DESCRIPTION = re.compile(r"신청|남음|오늘까지|내일까지|포인트|Only|^\[")
 
 
@@ -56,6 +57,8 @@ def parse_cards(html: str) -> list[RawCampaign]:
         title, brackets = split_title_brackets(raw_title)
 
         text = card.get_text(" ", strip=True)
+        if CLOSED_RE.search(text):
+            continue  # 모집이 끝난 카드 (목록 깊은 쪽에 섞여 나올 수 있다)
         if "오늘까지" in text:
             days_left = 0
         elif "내일까지" in text:
@@ -104,53 +107,90 @@ class DinnerqueenConnector(Connector):
     label = "디너의여왕"
     base_url = BASE_URL
     # 다음 페이지 POST를 requests로 흉내 내면 첫 페이지가 그대로 다시 온다 (2026-10-29 시험 실행) —
-    # 사이트가 실제로 하는 대로 브라우저에서 스크롤해서 불러온다.
+    # 브라우저로 첫 화면을 연 뒤 그 페이지 안에서 같은 요청을 부른다.
     needs_browser = True
     # 상세 페이지는 기본 HeadlessChrome UA에 403을 주고 이 UA는 통과시킨다 (2026-10-31 검수)
     browser_user_agent = HEADERS["User-Agent"]
     # 뱃지에 릴스/클립만 따로 표시되고 나머지는 블로그 체험단이다
     default_channels = ("blog",)
 
-    def __init__(self, scrolls: int = 8):
-        self.scrolls = scrolls
+    def __init__(self, max_pages: int = 300):
+        self.max_pages = max_pages
 
     def fetch(self) -> list[RawCampaign]:
+        """첫 화면을 브라우저로 연 뒤, 무한스크롤이 부르는 POST /taste/taste_list?page=N 을 페이지 안에서 직접 부른다.
+
+        2026-11-06 조사: 스크롤 60번(=121쪽, 카드 3,630개)까지도 목록이 끝나지 않았다. 예전엔 8번만 스크롤해
+        270개만 받았다. 응답은 {"layout": "<카드 HTML 조각>"} — 첫 화면과 같은 마크업이라 parse_cards로 읽는다.
+        같은 요청을 requests로 보내면 첫 쪽이 되풀이돼서, 사이트 자신의 페이지 안에서 fetch로 부른다.
+        """
         from playwright.sync_api import sync_playwright
+
+        campaigns: list[RawCampaign] = []
+        seen: set[str] = set()
+
+        def add(items: list[RawCampaign]) -> int:
+            new = 0
+            for c in items:
+                if c.source_url not in seen:
+                    seen.add(c.source_url)
+                    campaigns.append(c)
+                    new += 1
+            return new
 
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page = browser.new_page(user_agent=HEADERS["User-Agent"])
             page.goto(f"{LIST_URL}?ct=전체", wait_until="networkidle", timeout=45000)
             page.wait_for_selector("div.qz-dq-card.campaign", timeout=20000)
-            for i in range(self.scrolls):
-                before = page.locator("div.qz-dq-card.campaign").count()
-                page.mouse.wheel(0, 8000)
-                page.wait_for_timeout(2000)
-                after = page.locator("div.qz-dq-card.campaign").count()
-                print(f"[디너의여왕] 스크롤 {i + 1}: 카드 {before} → {after}")
-                if after == before:
+            add(parse_cards(page.content()))
+            stale = 0
+            last_page = 1
+            for page_no in range(2, self.max_pages + 1):
+                data = page.evaluate(
+                    """async (n) => {
+                        const q = new URLSearchParams({ct: '전체', area1: '전국', area2: '전체', page: n, ctype: '', query: ''});
+                        const r = await fetch('/taste/taste_list?' + q, {method: 'POST', credentials: 'same-origin',
+                            headers: {'X-Requested-With': 'XMLHttpRequest'}});
+                        return {status: r.status, text: await r.text()};
+                    }""",
+                    page_no,
+                )
+                if data["status"] != 200:
+                    print(f"[디너의여왕] page={page_no}: HTTP {data['status']} — 여기서 멈춤")
                     break
-            html = page.content()
+                try:
+                    import json
+
+                    layout = json.loads(data["text"]).get("layout") or ""
+                except ValueError:
+                    layout = data["text"]
+                found = parse_cards(layout)
+                last_page = page_no
+                if not found:
+                    if "qz-dq-card" in layout:
+                        print(f"[디너의여왕] page={page_no}: 카드가 모두 마감 — 목록 끝으로 봄")
+                    break
+                # 같은 쪽이 되풀이되면(새 카드 0) 두 번까지 봐주고 멈춘다
+                stale = stale + 1 if add(found) == 0 else 0
+                if stale >= 2:
+                    print(f"[디너의여왕] page={page_no}: 새 카드 없음 — 목록 끝으로 봄")
+                    break
+                page.wait_for_timeout(400)  # 사이트 부담 줄이기
             browser.close()
 
-        campaigns: list[RawCampaign] = []
-        seen: set[str] = set()
-        for c in parse_cards(html):
-            if c.source_url not in seen:
-                seen.add(c.source_url)
-                campaigns.append(c)
+        print(f"[디너의여왕] {last_page}쪽까지 읽음, 캠페인 {len(campaigns)}건")
+        if not campaigns:
+            raise RuntimeError("디너의여왕 목록에서 카드를 하나도 읽지 못했습니다")
         from collections import Counter
 
         badge_counts = Counter(b for c in campaigns for b in set(c.channels_raw))
         print(f"[디너의여왕] 뱃지/제목 괄호 값 집계: {dict(badge_counts)} (전체 {len(campaigns)}건)")
-        no_badge = [c for c in campaigns if not c.channels_raw]
-        print(f"[디너의여왕] 채널 표시가 없는 카드 {len(no_badge)}건")
-        for c in campaigns[:3] + campaigns[-3:]:
-            print(f"[디너의여왕] 표본 {c.source_url} 제목={c.title!r} 채널원본={c.channels_raw}")
         return campaigns
 
+
 if __name__ == "__main__":
-    items = DinnerqueenConnector(scrolls=2).fetch()
+    items = DinnerqueenConnector(max_pages=3).fetch()
     print(f"수집된 캠페인: {len(items)}개")
     for c in items[:5]:
         print(c)

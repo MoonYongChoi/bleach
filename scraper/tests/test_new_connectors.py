@@ -135,6 +135,10 @@ class SeouloubaTest(unittest.TestCase):
 
 
 class DinnerqueenTest(unittest.TestCase):
+    def test_closed_card_skipped(self):
+        html = fixture("dinnerqueen_card.html").replace("오늘까지", "모집마감")
+        self.assertEqual(parse_cards(html), [])
+
     def test_card(self):
         raws = parse_cards(fixture("dinnerqueen_card.html"))
         self.assertEqual(len(raws), 1)
