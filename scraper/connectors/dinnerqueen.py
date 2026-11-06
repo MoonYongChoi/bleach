@@ -162,9 +162,11 @@ class DinnerqueenConnector(Connector):
                 try:
                     import json
 
-                    layout = json.loads(data["text"]).get("layout") or ""
+                    body = json.loads(data["text"])
                 except ValueError:
-                    layout = data["text"]
+                    body = data["text"]
+                # 마지막 쪽 다음은 {"layout": ...} 대신 빈 목록 []이 온다 (2026-11-06 시험 실행)
+                layout = body.get("layout") or "" if isinstance(body, dict) else body if isinstance(body, str) else ""
                 found = parse_cards(layout)
                 last_page = page_no
                 if not found:
