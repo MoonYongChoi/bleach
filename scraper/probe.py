@@ -134,8 +134,9 @@ def probe_scroll(url: str, selector: str, scrolls: int = 30) -> None:
                 text = r.text()
             except Exception:  # noqa: BLE001
                 text = ""
+            head = re.sub(r"\s+", " ", text[:300])
             log.append(f"{r.request.method} {r.status} {r.url[:160]} body={body[:400]!r} "
-                       f"resp={len(text)}B cards~{text.count('c_box')} head={re.sub(r'\\s+', ' ', text[:300])!r}")
+                       f"resp={len(text)}B cards~{text.count('c_box')} head={head!r}")
 
         page.on("response", on_response)
         page.goto(url, wait_until="networkidle", timeout=45000)
