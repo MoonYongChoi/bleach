@@ -114,7 +114,7 @@ class DinnerqueenConnector(Connector):
     # 뱃지에 릴스/클립만 따로 표시되고 나머지는 블로그 체험단이다
     default_channels = ("blog",)
 
-    def __init__(self, max_pages: int = 300):
+    def __init__(self, max_pages: int = 600):
         self.max_pages = max_pages
 
     def fetch(self) -> list[RawCampaign]:
