@@ -43,8 +43,8 @@ def _image_url(image_key: Optional[str]) -> Optional[str]:
     return IMAGE_CDN + FIREBASE_IMAGE_URL.format(key=quote(image_key, safe=""))
 
 
-API_LIMIT = 100  # 사이트 화면은 16씩 부른다
-API_MAX_PAGES = 400
+API_LIMIT = 16  # 사이트 화면과 같게 — 100을 주면 첫 쪽(96개)과 둘째 쪽이 겹쳐 멈췄다 (2026-11-06)
+API_MAX_PAGES = 600
 
 
 def obj_to_raw(obj: dict) -> Optional[RawCampaign]:
