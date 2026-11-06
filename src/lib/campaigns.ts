@@ -203,29 +203,20 @@ export interface FilterOptions {
   channels: string[];
 }
 
+/**
+ * 필터 선택지. DB 함수 campaign_filter_options()가 모집 중 캠페인 전체를 집계해 준다
+ * (예전처럼 행을 받아 세면 PostgREST 기본 한도 1,000행까지만 보여서 일부 지역·분류가 빠졌다).
+ */
 export async function fetchFilterOptions(): Promise<FilterOptions> {
-  const { data, error } = await supabase
-    .from("campaigns")
-    .select("region_sido, region_guguns, category, campaign_type, review_channels")
-    .eq("is_active", true);
+  const { data, error } = await supabase.rpc("campaign_filter_options");
   if (error) throw error;
-
-  const sidos = new Set<string>();
-  const categories = new Set<string>();
-  const types = new Set<string>();
-  const channels = new Set<string>();
-  const gugunCounts = new Map<string, Map<string, number>>();
-  for (const row of data ?? []) {
-    if (row.region_sido) {
-      sidos.add(row.region_sido);
-      const counts = gugunCounts.get(row.region_sido) ?? new Map<string, number>();
-      for (const g of row.region_guguns ?? []) counts.set(g, (counts.get(g) ?? 0) + 1);
-      gugunCounts.set(row.region_sido, counts);
-    }
-    if (row.category) categories.add(row.category);
-    if (row.campaign_type && row.campaign_type in CAMPAIGN_TYPE_LABELS) types.add(row.campaign_type);
-    for (const c of row.review_channels ?? []) if (c in REVIEW_CHANNEL_LABELS) channels.add(c);
-  }
+  const raw = (data ?? {}) as {
+    sidos?: string[];
+    guguns?: Record<string, { name: string; count: number }[]>;
+    categories?: string[];
+    types?: string[];
+    channels?: string[];
+  };
 
   // 실제 데이터에 있는 값만 보여주되, 순서는 정의된 표준 순서를 따른다.
   const byOrder = (order: string[]) => (a: string, b: string) => {
@@ -233,18 +224,13 @@ export async function fetchFilterOptions(): Promise<FilterOptions> {
     return rank(a) - rank(b) || a.localeCompare(b);
   };
   return {
-    sidos: [...sidos].sort(byOrder(SIDO_ORDER)),
-    guguns: Object.fromEntries(
-      [...gugunCounts].map(([sido, counts]) => [
-        sido,
-        [...counts]
-          .map(([name, count]) => ({ name, count }))
-          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
-      ])
-    ),
-    categories: [...categories].sort(byOrder(CATEGORIES.map((c) => c.label))),
-    types: [...types].sort(byOrder(Object.keys(CAMPAIGN_TYPE_LABELS))),
-    channels: [...channels].sort(byOrder(Object.keys(REVIEW_CHANNEL_LABELS))),
+    sidos: [...(raw.sidos ?? [])].sort(byOrder(SIDO_ORDER)),
+    guguns: raw.guguns ?? {},
+    categories: [...(raw.categories ?? [])].sort(byOrder(CATEGORIES.map((c) => c.label))),
+    types: (raw.types ?? []).filter((t) => t in CAMPAIGN_TYPE_LABELS).sort(byOrder(Object.keys(CAMPAIGN_TYPE_LABELS))),
+    channels: (raw.channels ?? [])
+      .filter((c) => c in REVIEW_CHANNEL_LABELS)
+      .sort(byOrder(Object.keys(REVIEW_CHANNEL_LABELS))),
   };
 }
 
