@@ -204,6 +204,11 @@ class ModublogTest(unittest.TestCase):
         self.assertEqual(r["review_channels"], ["blog"])
         self.assertEqual(r["category"], "뷰티")  # 썸네일 경로 fashion
 
+    def test_sns_category_prefix(self):
+        card = {**self.CARD, "image": "https://www.modublog.co.kr/data/list_thumb/sns_fashion/thumb_49182_27039.jpg"}
+        r = norm("modublog", to_raw(card))
+        self.assertEqual((r["category_raw"], r["category"]), ("fashion", "뷰티"))
+
 
 if __name__ == "__main__":
     unittest.main()

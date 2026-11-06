@@ -69,7 +69,8 @@ def to_raw(card: dict) -> RawCampaign | None:
         deadline_days_left=days_left,
         applicant_count=rm.group(1) if rm else None,
         recruit_count=rm.group(2) if rm else None,
-        category_raw=cm.group(1) if cm else None,
+        # SNS 전용 캠페인은 "sns_fashion"처럼 앞에 sns_가 붙는다 — 분류는 뒷부분
+        category_raw=cm.group(1).removeprefix("sns_") if cm else None,
         type_hint=(brackets["types"] or [None])[0] or ("방문" if region else "배송"),
         channels_raw=card.get("channels", []) + brackets["channels"],
     )
