@@ -244,6 +244,44 @@ def probe_revu_api() -> None:
         browser.close()
 
 
+def probe_js_api(url: str, needle: str) -> None:
+    """페이지가 불러온 JS 파일들에서 needle(예: /api/v2/campaigns)이 나오는 곳 앞뒤를 찍고,
+    같은 주소를 페이지 안에서 fetch로 불러 본다 (쿠키·출처가 같아 403이 풀리는지)."""
+    from playwright.sync_api import sync_playwright
+
+    print(f"\n===== [JS에서 API 찾기] {url} / {needle}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url, wait_until="networkidle", timeout=45000)
+        found = page.evaluate(
+            """async (needle) => {
+                const urls = performance.getEntriesByType('resource').map(e => e.name).filter(u => u.endsWith('.js') || u.includes('.js?'));
+                const out = [];
+                for (const u of urls) {
+                    try {
+                        const t = await (await fetch(u)).text();
+                        let i = t.indexOf(needle);
+                        let n = 0;
+                        while (i >= 0 && n < 4) { out.push(u.split('/').pop() + ': ' + t.slice(Math.max(0, i - 400), i + 500)); i = t.indexOf(needle, i + 1); n++; }
+                    } catch (e) {}
+                }
+                return out;
+            }""",
+            needle,
+        )
+        print(f"  JS에서 {len(found)}곳")
+        for f in found[:8]:
+            print("   ---", re.sub(r"\s+", " ", f)[:1000])
+        for q in ("", "?page=2", "?page=2&limit=100", "?offset=96&limit=96"):
+            res = page.evaluate(
+                "async (u) => { const r = await fetch(u, {credentials: 'same-origin'}); return {s: r.status, t: (await r.text()).slice(0, 600)}; }",
+                needle + q,
+            )
+            print(f"  fetch {needle + q}: {res['s']} {res['t']!r}")
+        browser.close()
+
+
 def probe_text(url: str) -> None:
     """상세 페이지의 보이는 글자를 줄 단위로 그대로 출력 — 날짜·인원이 어떤 문장으로 적혀 있는지 본다."""
     print(f"\n===== [페이지 글자] {url}")
@@ -275,6 +313,9 @@ if __name__ == "__main__":
     if args and args[0] == "--text":  # python probe.py --text <url> [<url> ...]
         for target in args[1:]:
             probe_text(target)
+        sys.exit(0)
+    if args and args[0] == "--js-api":  # python probe.py --js-api <page url> <api path>
+        probe_js_api(args[1], args[2])
         sys.exit(0)
     if args and args[0] == "--revu-api":  # python probe.py --revu-api
         probe_revu_api()
