@@ -1,5 +1,6 @@
 """신규 커넥터 파서 테스트 — probe.py로 캡처한 실제 카드 마크업 기준 (tests/fixtures/)."""
 
+import json
 import os
 import sys
 import unittest
@@ -11,6 +12,7 @@ from connectors import BY_KEY  # noqa: E402
 from connectors.base import split_title_brackets  # noqa: E402
 from connectors.dinnerqueen import parse_cards  # noqa: E402
 from connectors.modublog import to_raw  # noqa: E402
+from connectors.revu import api_item_to_raw  # noqa: E402
 from connectors.seoulouba import SeouloubaConnector, parse_list, with_area_hint  # noqa: E402
 from normalize import normalize_for  # noqa: E402
 
@@ -208,6 +210,34 @@ class ModublogTest(unittest.TestCase):
         card = {**self.CARD, "image": "https://www.modublog.co.kr/data/list_thumb/sns_fashion/thumb_49182_27039.jpg"}
         r = norm("modublog", to_raw(card))
         self.assertEqual((r["category_raw"], r["category"]), ("fashion", "뷰티"))
+
+
+class RevuApiTest(unittest.TestCase):
+    # probe.py --revu-api 로 받은 실제 항목 (2026-11-06, 필드 일부)
+    ITEM = json.loads(fixture("revu_api_item.json"))
+
+    def test_visit_item(self):
+        raw = api_item_to_raw(self.ITEM, "지역", today=TODAY)
+        r = norm("revu", raw)
+        self.assertEqual(r["source_url"], "https://www.revu.net/campaign/1432910")
+        self.assertEqual(r["title"], "EPT 신제주점")
+        self.assertEqual((r["region_sido"], r["region_gugun"]), ("제주", "제주시"))
+        self.assertEqual(r["campaign_type"], "방문")
+        self.assertEqual(r["deadline_date"], date(2026, 11, 12))
+        self.assertEqual((r["applicant_count"], r["recruit_count"]), (5, 5))
+        self.assertEqual(r["review_channels"], ["blog"])
+        self.assertEqual(r["description"], "롱슬리브")
+        self.assertEqual(r["category_raw"], "기타")
+
+    def test_product_item_and_closed(self):
+        item = {**self.ITEM, "item": "[브랜드몰] 수분 크림", "category": ["제품_뷰티", "배송형"], "media": "instagram"}
+        r = norm("revu", api_item_to_raw(item, "제품", today=TODAY))
+        self.assertEqual((r["title"], r["vendor"], r["campaign_type"]), ("수분 크림", "브랜드몰", "배송"))
+        self.assertIsNone(r["region_sido"])
+        self.assertEqual(r["category"], "뷰티")
+        self.assertEqual(r["review_channels"], ["instagram"])
+        self.assertIsNone(api_item_to_raw({**self.ITEM, "status": "ENTRY"}, "지역", today=TODAY))
+        self.assertIsNone(api_item_to_raw({**self.ITEM, "requestEndedOn": "2026-10-01"}, "지역", today=TODAY))
 
 
 if __name__ == "__main__":

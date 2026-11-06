@@ -20,6 +20,16 @@
   "[괄호 프리픽스]"는 카테고리에 따라 의미가 다르다 — /category/지역은 지역명,
   /category/제품은 업체/브랜드명이다.
 - 정확한 마감 "일수"만 주어지고 날짜는 구조화되어 있지 않음.
+
+목록 API (2026-11-06 probe.py --revu-api 조사) — 지금은 이걸 쓴다:
+- 목록 화면은 로그인 토큰(authorization 헤더)으로 GET https://api.weble.net/v1/campaigns 를 부른다.
+  ?cat=지역|제품&limit=30&media[]=blog&...&page=N&sort=latest&type=play → {items, total, count, page, limit}
+  limit=100도 받는다. 2026-11-06 기준 지역만 total 3,167건 (화면 첫 30개만 읽던 예전 방식의 100배).
+- 항목: id, item("[제주] EPT 신제주점" = 카드 제목), media(blog/instagram/youtube/clip/etc),
+  requestEndedOn(신청 마감일), entryAnnouncedOn(발표일), reviewerLimit(모집), campaignStats.requestCount(신청),
+  thumbnail, status("REQUEST" = 모집 중), category(["지역_맛집", "방문형"]), localTag(["제주"]),
+  venue.addressFirst("제주특별자치도 제주시 ..."), venue.name, campaignData.reward(제공내역).
+- 목록 화면이 처음 부르는 요청의 헤더를 그대로 붙여 페이지만 바꿔 부른다. 실패하면 예전 화면 읽기로 돌아간다.
 """
 
 from __future__ import annotations
@@ -32,6 +42,12 @@ from urllib.parse import urljoin
 
 from connectors.base import Connector, RawCampaign
 from normalize import today_kst
+
+API_URL = "https://api.weble.net/v1/campaigns"
+API_LIMIT = 100
+API_MAX_PAGES = 80  # 카테고리당 상한 (100 x 80 = 8,000건)
+API_MEDIA = ["blog", "instagram", "youtube", "clip", "etc"]
+TYPE_WORDS = ("방문형", "배송형", "구매형", "기자단", "포장형", "재택형")
 
 BASE_URL = "https://www.revu.net"
 CATEGORIES = ["제품", "지역"]
@@ -109,8 +125,16 @@ class RevuConnector(Connector):
     # "인스타그램 팔로워 5만 이상" 같은 조건이 적혀 있어서 "표시 없음 = 블로그"가 틀리는 경우가 있었다
     # (2026-10-31 원본 대조: 9건 중 7건에서 페이지에 블로그 언급이 없고 1건은 인스타그램 캠페인).
 
+    # API의 media 값 -> 표준 채널 (etc는 채널 정보 없음)
+    channel_hints = {"blog": "blog", "instagram": "instagram", "youtube": "youtube", "clip": "clip",
+                     "reels": "reels", "shorts": "shorts", "tiktok": "tiktok"}
+
     def fetch(self) -> list[RawCampaign]:
-        return _fetch()
+        try:
+            return _fetch_api()
+        except Exception as e:  # noqa: BLE001 - API가 바뀌면 예전 화면 읽기(첫 화면만)로라도 수집
+            print(f"[레뷰] 목록 API 수집 실패 → 화면 읽기로 대신함: {type(e).__name__}: {e}")
+            return _fetch()
 
     def prepare_browser(self, context) -> None:
         _login(context)
@@ -141,6 +165,113 @@ CARD_JS = """els => els
             text: el.innerText || ''
         };
     })"""
+
+
+def api_item_to_raw(item: dict, cat: str, today: Optional[date] = None) -> Optional[RawCampaign]:
+    """목록 API 항목 하나 -> RawCampaign. 모집 중이 아니면 None."""
+    today = today or today_kst()
+    cid = item.get("id")
+    if not cid or item.get("status") not in (None, "REQUEST") or item.get("active") is False:
+        return None
+    deadline = item.get("requestEndedOn")
+    if deadline and deadline < today.isoformat():
+        return None
+
+    title = (item.get("item") or item.get("title") or "").strip()
+    bracket = None
+    bm = BRACKET_PREFIX_RE.match(title)
+    if bm:
+        bracket = bm.group(1)
+        title = title[bm.end():].strip() or title
+    if not title:
+        return None
+
+    labels = [str(c) for c in (item.get("category") or [])]
+    type_hint = next((c for c in labels if c in TYPE_WORDS), None) or cat
+    # "지역_맛집" / "제품_뷰티" -> 맛집 / 뷰티
+    category_raw = next((c.split("_", 1)[1] for c in labels if "_" in c), None)
+
+    venue = item.get("venue") or {}
+    address = " ".join((venue.get("addressFirst") or "").split()[:2])
+    local = (item.get("localTag") or [None])[0]
+    visit = type_hint == "방문형" or (type_hint == cat == "지역")
+    region_raw = (address or local or bracket) if visit else None
+    vendor = bracket if not visit else None
+
+    options = item.get("campaignOptions") or {}
+    channels = [item.get("media")] + ([options["shortForm"]] if isinstance(options.get("shortForm"), str) else [])
+    stats = item.get("campaignStats") or {}
+    reward = (item.get("campaignData") or {}).get("reward")
+
+    return RawCampaign(
+        source_url=f"{BASE_URL}/campaign/{cid}",
+        title=title,
+        description=(reward or "").strip() or None,
+        vendor=vendor,
+        image_url=item.get("thumbnail"),
+        region_raw=region_raw,
+        deadline_date=deadline,
+        announce_date=item.get("entryAnnouncedOn"),
+        recruit_count=item.get("reviewerLimit"),
+        applicant_count=stats.get("requestCount"),
+        category_raw=category_raw,
+        type_hint=type_hint,
+        channels_raw=[c for c in channels if c and c != "etc"],
+    )
+
+
+def _fetch_api() -> list[RawCampaign]:
+    from urllib.parse import urlencode
+
+    from playwright.sync_api import sync_playwright
+
+    campaigns: list[RawCampaign] = []
+    seen: set[str] = set()
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        _login(context)
+        page = context.new_page()
+        captured: list = []
+        page.on("request", lambda r: captured.append(r) if r.url.startswith(API_URL) else None)
+        page.goto(f"{BASE_URL}/category/지역", wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(1000)
+        if not captured:
+            browser.close()
+            raise RuntimeError("목록 화면이 /v1/campaigns 를 부르지 않음 (API 주소가 바뀌었을 수 있음)")
+        headers = {k: v for k, v in captured[0].all_headers().items()
+                   if not k.startswith(":") and k not in ("content-length", "host", "accept-encoding")}
+        if "authorization" not in headers:
+            browser.close()
+            raise RuntimeError("목록 API 요청에 authorization 헤더가 없음")
+
+        for cat in CATEGORIES:
+            total = None
+            kept = 0
+            for page_no in range(1, API_MAX_PAGES + 1):
+                query = [("cat", cat), ("limit", API_LIMIT)] + [("media[]", m) for m in API_MEDIA] + [
+                    ("page", page_no), ("sort", "latest"), ("type", "play")]
+                resp = context.request.get(f"{API_URL}?{urlencode(query)}", headers=headers, timeout=30000)
+                if resp.status != 200:
+                    raise RuntimeError(f"cat={cat} page={page_no}: HTTP {resp.status}")
+                data = resp.json()
+                items = data.get("items") or []
+                total = data.get("total", total)
+                for item in items:
+                    raw = api_item_to_raw(item, cat)
+                    if raw and raw.source_url not in seen:
+                        seen.add(raw.source_url)
+                        campaigns.append(raw)
+                        kept += 1
+                if not items or (total is not None and page_no * API_LIMIT >= total):
+                    break
+                page.wait_for_timeout(500)  # 사이트 부담 줄이기
+            print(f"[레뷰] API cat={cat}: 사이트 총 {total}건 → 모집 중 {kept}건 수집")
+        browser.close()
+
+    if not campaigns:
+        raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
+    return campaigns
 
 
 def _fetch() -> list[RawCampaign]:
