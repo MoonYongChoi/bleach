@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from collections import Counter
@@ -118,7 +119,9 @@ def probe_scroll(url: str, selector: str, scrolls: int = 30, login_key: str | No
     print(f"\n===== [무한스크롤 조사] {url} ({selector})")
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        context = browser.new_context()
+        # 기본 HeadlessChrome UA를 막는 사이트(디너의여왕)가 있어 PROBE_UA=bot 이면 커넥터와 같은 UA를 쓴다
+        ua = HEADERS["User-Agent"] if os.environ.get("PROBE_UA") == "bot" or "dinnerqueen" in url else None
+        context = browser.new_context(user_agent=ua) if ua else browser.new_context()
         base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
         if login_key:  # 로그인이 필요한 목록 (예: revu) — 커넥터의 로그인 절차를 그대로 쓴다
             from connectors import BY_KEY
