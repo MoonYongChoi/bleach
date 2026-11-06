@@ -110,6 +110,63 @@ def probe_cards_detail(url: str, selector: str, n: int = 6) -> None:
         browser.close()
 
 
+def probe_scroll(url: str, selector: str, scrolls: int = 30) -> None:
+    """무한스크롤 목록 조사: 스크롤마다 카드 수와 XHR(POST 본문 포함)을 찍고, 언제 멈추는지 본다.
+    같은 사이트 첫 화면을 먼저 열어 봇 확인 쿠키를 받는다."""
+    from playwright.sync_api import sync_playwright
+
+    print(f"\n===== [무한스크롤 조사] {url} ({selector})")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        warm = context.new_page()
+        warm.goto(base, wait_until="networkidle", timeout=45000)
+        warm.close()
+        page = context.new_page()
+        log: list[str] = []
+
+        def on_response(r):
+            if r.request.resource_type not in ("xhr", "fetch"):
+                return
+            body = r.request.post_data or ""
+            try:
+                text = r.text()
+            except Exception:  # noqa: BLE001
+                text = ""
+            log.append(f"{r.request.method} {r.status} {r.url[:160]} body={body[:400]!r} "
+                       f"resp={len(text)}B cards~{text.count('c_box')} head={re.sub(r'\\s+', ' ', text[:300])!r}")
+
+        page.on("response", on_response)
+        page.goto(url, wait_until="networkidle", timeout=45000)
+        page.wait_for_timeout(1500)
+        print("  처음 카드:", page.locator(selector).count())
+        stuck = 0
+        for i in range(scrolls):
+            before = page.locator(selector).count()
+            page.mouse.wheel(0, 6000)
+            page.wait_for_timeout(2500)
+            page.keyboard.press("End")
+            page.wait_for_timeout(1500)
+            after = page.locator(selector).count()
+            print(f"  스크롤 {i + 1}: {before} -> {after}")
+            stuck = stuck + 1 if after == before else 0
+            if stuck >= 3:
+                print("  3번 연속 그대로라 멈춤")
+                break
+        print("  XHR/fetch 요청 (처음 12개 + 마지막 4개):")
+        for line in log[:12] + (["   ..."] if len(log) > 16 else []) + log[-4:]:
+            print("   ", line[:900])
+        # 목록 아래쪽 '더보기'·페이지 버튼, 분류 탭
+        tail = page.eval_on_selector_all(
+            "a, button",
+            "els => els.map(e => (e.innerText||'').trim().slice(0,20) + ' -> ' + (e.getAttribute('href')||e.getAttribute('onclick')||'')).filter(t => /더보기|more|다음|page|cate|ca_id|ct=|sort|분류|전체/i.test(t))",
+        )
+        print("  더보기/분류/정렬 후보:", sorted(set(tail))[:60])
+        print("  현재 주소:", page.url)
+        browser.close()
+
+
 def probe_text(url: str) -> None:
     """상세 페이지의 보이는 글자를 줄 단위로 그대로 출력 — 날짜·인원이 어떤 문장으로 적혀 있는지 본다."""
     print(f"\n===== [페이지 글자] {url}")
@@ -141,6 +198,9 @@ if __name__ == "__main__":
     if args and args[0] == "--text":  # python probe.py --text <url> [<url> ...]
         for target in args[1:]:
             probe_text(target)
+        sys.exit(0)
+    if args and args[0] == "--scroll":  # python probe.py --scroll <url> <css selector> [스크롤 횟수]
+        probe_scroll(args[1], args[2], int(args[3]) if len(args) > 3 else 30)
         sys.exit(0)
     if args and args[0] == "--cards":  # python probe.py --cards <url> <css selector>
         probe_cards_detail(args[1], args[2])
