@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/empty-state";
 import { adAfter } from "@/lib/ads";
 import { loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
 import {
+  DEFAULT_MAX_APPLY_RATE,
   PAGE_SIZE,
   type Campaign,
   type FilterOptions,
@@ -42,7 +43,7 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   const [sortOpen, setSortOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(
-    initial?.options ?? { sidos: [], guguns: {}, categories: [], types: [], channels: [] }
+    initial?.options ?? { sidos: [], guguns: {}, categories: [], types: [], channels: [], maxApplyRate: DEFAULT_MAX_APPLY_RATE }
   );
   const [campaigns, setCampaigns] = useState<Campaign[]>(initial?.rows ?? []);
   const [total, setTotal] = useState(initial?.total ?? 0);

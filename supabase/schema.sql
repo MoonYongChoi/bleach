@@ -137,7 +137,7 @@ security invoker
 set search_path = public
 as $$
   with active as (
-    select region_sido, region_guguns, category, campaign_type, review_channels
+    select region_sido, region_guguns, category, campaign_type, review_channels, apply_rate
     from public.campaigns
     where is_active
   )
@@ -158,7 +158,9 @@ as $$
     ), '{}'::json),
     'categories', coalesce((select json_agg(distinct category) from active where category is not null), '[]'::json),
     'types', coalesce((select json_agg(distinct campaign_type) from active where campaign_type is not null), '[]'::json),
-    'channels', coalesce((select json_agg(distinct c) from active, unnest(review_channels) as c), '[]'::json)
+    'channels', coalesce((select json_agg(distinct c) from active, unnest(review_channels) as c), '[]'::json),
+    -- 경쟁률 슬라이더의 오른쪽 끝 = 지금 모집 중인 체험단의 최대 경쟁률
+    'maxApplyRate', coalesce((select ceil(max(apply_rate)) from active), 10)
   );
 $$;
 

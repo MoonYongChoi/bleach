@@ -201,6 +201,8 @@ export interface FilterOptions {
   categories: string[];
   types: string[];
   channels: string[];
+  /** 모집 중인 체험단의 최대 경쟁률 (N:1의 N, 올림) — 경쟁률 슬라이더의 오른쪽 끝 */
+  maxApplyRate: number;
 }
 
 /**
@@ -216,6 +218,7 @@ export async function fetchFilterOptions(): Promise<FilterOptions> {
     categories?: string[];
     types?: string[];
     channels?: string[];
+    maxApplyRate?: number | string;
   };
 
   // 실제 데이터에 있는 값만 보여주되, 순서는 정의된 표준 순서를 따른다.
@@ -231,8 +234,12 @@ export async function fetchFilterOptions(): Promise<FilterOptions> {
     channels: (raw.channels ?? [])
       .filter((c) => c in REVIEW_CHANNEL_LABELS)
       .sort(byOrder(Object.keys(REVIEW_CHANNEL_LABELS))),
+    maxApplyRate: Math.max(Number(raw.maxApplyRate) || DEFAULT_MAX_APPLY_RATE, 2),
   };
 }
+
+/** 집계를 아직 못 받았을 때 경쟁률 슬라이더의 끝 */
+export const DEFAULT_MAX_APPLY_RATE = 10;
 
 // 가나다순이 아니라 사람들이 익숙한 행정구역 순서 (수도권 → 광역시 → 도 → 해외)
 const SIDO_ORDER = [

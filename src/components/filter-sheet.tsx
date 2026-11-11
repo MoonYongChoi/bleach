@@ -38,8 +38,25 @@ function clearSheetFilters(f: FilterState): FilterState {
   return { ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded, favoritesOnly: f.favoritesOnly };
 }
 
-// 경쟁률(신청 ÷ 모집) 슬라이더 범위: 0~10:1. 오른쪽 끝에 두면 "10:1 이상"까지 무제한으로 연다.
-const APPLY_RATE_SLIDER_MAX = 10;
+// 경쟁률(신청 ÷ 모집) 슬라이더: 0:1 ~ 모집 중 체험단의 최대 경쟁률(options.maxApplyRate).
+// 최대가 수천:1인데 절반은 2:1 미만이라, 같은 간격이면 거의 전부 왼쪽 끝에 몰린다 → 로그 눈금으로 움직인다.
+const SLIDER_STEPS = 1000;
+
+/** 슬라이더 위치(0~SLIDER_STEPS) -> 경쟁률. 낮은 쪽은 0.5 단위, 높은 쪽은 큰 단위로 반올림 */
+function rateAt(pos: number, maxRate: number): number {
+  if (pos >= SLIDER_STEPS) return maxRate;
+  const raw = Math.pow(maxRate + 1, pos / SLIDER_STEPS) - 1;
+  const unit = raw < 10 ? 0.5 : raw < 100 ? 1 : raw < 1000 ? 10 : 100;
+  return Math.min(Math.round(raw / unit) * unit, maxRate);
+}
+
+/** 경쟁률 -> 슬라이더 위치 */
+function posOf(rate: number, maxRate: number): number {
+  if (!Number.isFinite(rate) || rate >= maxRate) return SLIDER_STEPS;
+  return Math.round((SLIDER_STEPS * Math.log(Math.max(rate, 0) + 1)) / Math.log(maxRate + 1));
+}
+
+const fmtRate = (v: number) => (Math.round(v * 10) / 10).toLocaleString();
 const APPLY_RATE_PRESETS: { label: string; range: ApplyRateRange }[] = [
   { label: "여유 (1:1 미만)", range: { min: 0, max: 1 } },
   { label: "보통 (1~5:1)", range: { min: 1, max: 5 } },
@@ -50,12 +67,12 @@ function scrollToSection(id: FilterSection, behavior: ScrollBehavior) {
   document.getElementById(`filter-section-${id}`)?.scrollIntoView({ behavior, block: "start" });
 }
 
-function formatRange(min: number, max: number) {
-  const n = (v: number) => Math.round(v * 10) / 10;
-  if (min <= 0 && max >= APPLY_RATE_SLIDER_MAX) return "전체";
-  if (min <= 0) return `${n(max)}:1 이하`;
-  if (max >= APPLY_RATE_SLIDER_MAX) return `${n(min)}:1 이상`;
-  return `${n(min)}~${n(max)}:1`;
+function formatRange(min: number, max: number, maxRate: number) {
+  const open = !Number.isFinite(max) || max >= maxRate;
+  if (min <= 0 && open) return "전체";
+  if (min <= 0) return `${fmtRate(max)}:1 이하`;
+  if (open) return `${fmtRate(min)}:1 이상`;
+  return `${fmtRate(min)}~${fmtRate(max)}:1`;
 }
 
 const SECTION_TITLES: Record<FilterSection, string> = {
@@ -123,9 +140,11 @@ export function FilterSheet({
     });
   }
 
-  const sliderValue: [number, number] = draft.applyRate
-    ? [draft.applyRate.min, Math.min(draft.applyRate.max, APPLY_RATE_SLIDER_MAX)]
-    : [0, APPLY_RATE_SLIDER_MAX];
+  const maxRate = options.maxApplyRate;
+  const rateRange: [number, number] = draft.applyRate
+    ? [draft.applyRate.min, draft.applyRate.max]
+    : [0, Infinity];
+  const sliderValue: [number, number] = [posOf(rateRange[0], maxRate), posOf(rateRange[1], maxRate)];
 
   const sections: FilterSection[] = [
     "type",
@@ -290,23 +309,29 @@ export function FilterSheet({
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>직접 범위 지정</span>
                   <span className="text-sm font-semibold tabular-nums text-foreground">
-                    {formatRange(sliderValue[0], sliderValue[1])}
+                    {formatRange(rateRange[0], rateRange[1], maxRate)}
                   </span>
                 </div>
                 <Slider
                   min={0}
-                  max={APPLY_RATE_SLIDER_MAX}
-                  step={0.5}
+                  max={SLIDER_STEPS}
+                  step={1}
                   minStepsBetweenValues={1}
                   value={sliderValue}
+                  aria-label="경쟁률 범위"
                   onValueChange={(next) => {
-                    const [min, max] = next as number[];
+                    const [lo, hi] = next as number[];
                     setDraft((d) => ({
                       ...d,
-                      applyRate: { min, max: max >= APPLY_RATE_SLIDER_MAX ? Infinity : max },
+                      // 오른쪽 끝은 "최대 이상"으로 열어 둔다 — 수집 뒤 더 높은 경쟁률이 생겨도 빠지지 않게
+                      applyRate: { min: rateAt(lo, maxRate), max: hi >= SLIDER_STEPS ? Infinity : rateAt(hi, maxRate) },
                     }));
                   }}
                 />
+                <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
+                  <span>0:1</span>
+                  <span>최대 {fmtRate(maxRate)}:1</span>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
                 신청 현황을 공개하는 체험단만 이 조건으로 걸러집니다.
