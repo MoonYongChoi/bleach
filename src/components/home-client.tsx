@@ -281,6 +281,7 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
         onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
         includeOpenEnded={filters.includeOpenEnded}
         onToggleOpenEnded={() => setFilters((f) => ({ ...f, includeOpenEnded: !f.includeOpenEnded }))}
+        hasRateFilter={filters.applyRate !== null}
       />
     </div>
   );

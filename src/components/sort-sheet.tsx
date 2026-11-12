@@ -2,7 +2,7 @@
 
 import { CheckIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { SORT_OPTIONS, type SortOption } from "@/lib/campaigns";
+import { SORT_OPTIONS, tieBreakLabel, type SortOption } from "@/lib/campaigns";
 import { cn } from "cn";
 
 /** 정렬은 결과를 줄이지 않으니 필터와 분리하고, 고르는 즉시 적용한다 (적용 버튼 없음). */
@@ -13,6 +13,7 @@ export function SortSheet({
   onChange,
   includeOpenEnded,
   onToggleOpenEnded,
+  hasRateFilter,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -20,6 +21,8 @@ export function SortSheet({
   onChange: (next: SortOption) => void;
   includeOpenEnded: boolean;
   onToggleOpenEnded: () => void;
+  /** 경쟁률 필터가 걸려 있으면 같은 순위 안에서 경쟁률이 먼저 온다 */
+  hasRateFilter: boolean;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -46,6 +49,11 @@ export function SortSheet({
                       {option.label}
                     </span>
                     <span className="text-xs text-muted-foreground">{option.hint}</span>
+                    {selected && (
+                      <span className="text-[11px] text-muted-foreground/80">
+                        같은 순위끼리는 {tieBreakLabel(option.value, hasRateFilter)} 순
+                      </span>
+                    )}
                   </span>
                   {selected && <CheckIcon className="size-5 shrink-0 text-primary" />}
                 </button>

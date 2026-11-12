@@ -36,6 +36,36 @@ export const SORT_OPTIONS: { value: SortOption; label: string; hint: string }[] 
   { value: "latest", label: "최신 등록순", hint: "BLEACH에 새로 올라온 순" },
 ];
 
+/**
+ * 정렬 규칙: 고른 정렬이 1순위, 같은 값끼리는 아래 보조 순서로 줄 세운다 (모두 "신청자에게 유리한 쪽 먼저").
+ * 경쟁률 필터를 걸었으면 경쟁률이 보조 순서 맨 앞으로 온다. 지역·분류 같은 나머지 필터는 순서를 바꾸지 않는다.
+ * 값이 없는 체험단(상시모집, 신청 현황 비공개 등)은 그 기준에서 맨 뒤.
+ */
+type SortKey = "deadline" | "rate" | "recruit" | "latest";
+const SORT_CHAINS: Record<SortOption, SortKey[]> = {
+  deadline: ["deadline", "rate", "recruit", "latest"],
+  competition: ["rate", "deadline", "recruit", "latest"],
+  recruit: ["recruit", "rate", "deadline", "latest"],
+  latest: ["latest", "deadline", "rate"],
+};
+const SORT_KEY_LABELS: Record<SortKey, string> = {
+  deadline: "마감 임박",
+  rate: "경쟁 낮은",
+  recruit: "모집 많은",
+  latest: "최신 등록",
+};
+
+export function sortChain(sort: SortOption, hasRateFilter: boolean): SortKey[] {
+  const [primary, ...rest] = SORT_CHAINS[sort];
+  if (!hasRateFilter || primary === "rate") return [primary, ...rest];
+  return [primary, "rate", ...rest.filter((k) => k !== "rate")];
+}
+
+/** 정렬 시트에 보여 줄 보조 순서 설명 (예: "경쟁 낮은 → 모집 많은 → 최신 등록") */
+export function tieBreakLabel(sort: SortOption, hasRateFilter: boolean): string {
+  return sortChain(sort, hasRateFilter).slice(1).map((k) => SORT_KEY_LABELS[k]).join(" → ");
+}
+
 export interface ApplyRateRange {
   min: number;
   max: number;
@@ -143,22 +173,15 @@ export async function fetchCampaignPage(filters: CampaignFilters = {}, page = 0)
   if (filters.ids && filters.ids.length === 0) return [];
 
   let query = filteredQuery(filters, SELECT_COLUMNS);
-  switch (filters.sort) {
-    case "deadline":
-      // 상시모집(마감일 없음)은 맨 뒤로
-      query = query.order("deadline_date", { ascending: true, nullsFirst: false });
-      break;
-    case "recruit":
-      query = query.order("recruit_count", { ascending: false, nullsFirst: false });
-      break;
-    case "competition":
-      // 경쟁률을 모르는 체험단은 맨 뒤로
-      query = query.order("apply_rate", { ascending: true, nullsFirst: false });
-      break;
+  for (const key of sortChain(filters.sort ?? "deadline", Boolean(filters.applyRate))) {
+    if (key === "deadline") query = query.order("deadline_date", { ascending: true, nullsFirst: false });
+    else if (key === "rate") query = query.order("apply_rate", { ascending: true, nullsFirst: false });
+    else if (key === "recruit") query = query.order("recruit_count", { ascending: false, nullsFirst: false });
+    else query = query.order("created_at", { ascending: false });
   }
-  // 같은 값 안에서는 최신 등록순, 마지막은 id — 같은 배치로 들어온 행은 created_at이 같아서 id로 순서를 고정해야
+  // 마지막은 id — 같은 배치로 들어온 행은 created_at이 같아서 id로 순서를 고정해야
   // 페이지 경계에서 행이 겹치거나 빠지지 않는다
-  query = query.order("created_at", { ascending: false }).order("id");
+  query = query.order("id");
 
   const from = page * PAGE_SIZE;
   const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
