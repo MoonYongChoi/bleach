@@ -45,6 +45,7 @@ def _image_url(image_key: Optional[str]) -> Optional[str]:
 
 API_LIMIT = 16  # 사이트 화면과 같게 — 100을 주면 첫 쪽(96개)과 둘째 쪽이 겹쳐 멈췄다 (2026-11-06)
 API_MAX_PAGES = 600
+API_PAGE_CAP = 100  # 사이트가 이 쪽수에서 목록을 끊는 것으로 보인다 (2026-11-12 실행 로그)
 
 
 def obj_to_raw(obj: dict) -> Optional[RawCampaign]:
@@ -154,7 +155,11 @@ class ReviewnoteConnector(Connector):
                         campaigns.append(raw)
                         new += 1
                 if not objects or not body.get("has_more"):
-                    self.complete = True
+                    # 2026-11-12: 사이트가 100쪽(1,600건)에서 has_more=false를 준다 — 목록 끝이 아니라 상한일 수 있어
+                    # 그 경우는 끝까지 읽었다고 보지 않는다 (사라진 캠페인을 잘못 내리지 않게)
+                    self.complete = pages < API_PAGE_CAP
+                    if not self.complete:
+                        print(f"[리뷰노트] {pages}쪽에서 목록이 끝남 — 사이트 상한으로 보고 종료 처리는 하지 않음")
                     break
                 if new == 0:
                     break
