@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import re
 from typing import Optional
 from urllib.parse import quote
@@ -155,44 +156,56 @@ class ReviewnoteConnector(Connector):
                     raise RuntimeError(f"{path} {params}: HTTP {data['status']} {str(data['body'])[:120]}")
                 return data["body"]
 
-            def read_list(label: str, params: dict, first: Optional[dict] = None) -> None:
-                """한 목록을 끝까지. 100쪽 상한에 닿으면 capped에 남긴다."""
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            def read_list(params: dict) -> bool:
+                """한 목록을 끝까지. 100쪽을 다 읽고도 더 있으면(사이트 상한) True.
+
+                지역을 걸면 마감된 캠페인도 섞여 나온다(2026-11-12: 22,923건 중 9,623건) — 마감만 있는 쪽이
+                연달아 3번 나오면 그 뒤는 지난 캠페인으로 보고 멈춘다.
+                """
+                expired_pages = 0
                 for page_no in range(API_PAGE_CAP):
-                    body = first if (page_no == 0 and first is not None) else call(
-                        "/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": page_no, **params})
+                    body = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": page_no, **params})
                     objects = body.get("objects") or []
+                    open_count = 0
                     for obj in objects:
+                        if (obj.get("applyEndAt") or "9999") < now_iso:
+                            continue  # 이미 마감
+                        open_count += 1
                         raw = obj_to_raw(obj)
                         if raw and raw.source_url not in seen:
                             seen.add(raw.source_url)
                             campaigns.append(raw)
                     if not objects or not body.get("has_more"):
-                        return
+                        return False
+                    expired_pages = expired_pages + 1 if open_count == 0 else 0
+                    if expired_pages >= 3:
+                        return False
                     page.wait_for_timeout(200)  # 사이트 부담 줄이기
-                capped.append(label)
+                return True
 
-            overall = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": 0})
-            site_total = overall.get("total_count")
+            # 지역 없이 본 목록(모집 중만 나온다)도 먼저 읽는다 — 지역에 안 묶인 캠페인까지 잡으려고
+            read_list({})
             sidos = call("/api/v2/sidos", {}) or []
+            split: list[str] = []
             for sido in sidos:
                 name = sido.get("name")
-                if not name:
+                if not name or not read_list({"city": name}):
                     continue
-                first = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": 0, "city": name})
-                if (first.get("total_count") or 0) <= API_LIMIT * API_PAGE_CAP:
-                    read_list(name, {"city": name}, first)
-                    continue
-                # 이 시/도는 한 목록에 다 안 들어간다 → 시/군/구별로
+                # 100쪽 상한에 걸린 시/도(서울·경기 등) → 시/군/구별로 다시
+                split.append(name)
                 for gugun in sido.get("guguns") or []:
-                    if gugun.get("id") is not None:
-                        read_list(f"{name} {gugun.get('name')}", {"city": name, "gugunSelected": gugun["id"]})
+                    if gugun.get("id") is not None and read_list({"city": name, "gugunSelected": gugun["id"]}):
+                        capped.append(f"{name} {gugun.get('name')}")
             browser.close()
 
         got = len(campaigns)
-        # 지역에 안 묶이는 캠페인이 있을 수 있어, 사이트 전체 건수의 98% 이상을 받았고 상한에 걸린 목록이 없을 때만 "끝까지"
-        self.complete = not capped and bool(site_total) and got >= 0.98 * site_total
-        print(f"[리뷰노트] 지역별 목록 API {requests_made}회 → 캠페인 {got}건 (사이트 전체 {site_total}건)"
-              + (f", 100쪽 상한에 걸린 목록: {capped[:5]}" if capped else ""))
+        # 시/군/구까지 나눠도 상한에 걸린 목록이 없을 때만 "끝까지 읽음" (사라진 캠페인 종료 처리의 조건)
+        self.complete = not capped
+        print(f"[리뷰노트] 지역별 목록 API {requests_made}회 → 모집 중 캠페인 {got}건"
+              + (f", 시/군/구로 나눈 시/도: {split}" if split else "")
+              + (f", 그래도 상한에 걸린 목록: {capped[:5]}" if capped else ""))
         if not campaigns:
             raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
         return campaigns
