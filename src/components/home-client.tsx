@@ -191,6 +191,14 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
             setSearch(q);
             if (q.trim()) track("search", { q: q.trim().slice(0, 60) });
           }}
+          onHome={() => {
+            setSearchDraft("");
+            setSearch("");
+            setFilters(EMPTY_FILTER_STATE);
+            setFilterSection(null);
+            setSortOpen(false);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
         />
         <QuickFilters
           value={filters}

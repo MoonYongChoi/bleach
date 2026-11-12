@@ -1,12 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { SearchIcon, XIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 /** 로고의 푸른 물방울은 "빨래 푸르름" — 흰 빨래를 더 희게 보이게 하는 한 방울에서 따왔다 */
-function Wordmark() {
+function Wordmark({ onHome }: { onHome?: () => void }) {
   return (
-    <div className="flex shrink-0 flex-col gap-1" aria-label="bleach, 블로그 리뷰체험 서치">
+    <Link
+      href="/"
+      aria-label="bleach 처음 화면으로"
+      onClick={(e) => {
+        // 이미 첫 페이지라 다시 불러오지 않고, 검색·필터·정렬을 처음 상태로 돌리고 맨 위로 올린다
+        if (!onHome || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onHome();
+      }}
+      className="flex shrink-0 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
       <div className="flex items-center gap-1.5">
         <svg viewBox="0 0 16 20" className="h-5 w-4 text-primary" aria-hidden>
           <path d="M8 1C8 1 1.5 8.4 1.5 12.6A6.5 6.5 0 0 0 14.5 12.6C14.5 8.4 8 1 8 1Z" fill="currentColor" />
@@ -19,7 +30,7 @@ function Wordmark() {
       <span className="text-[10px] font-medium leading-none text-muted-foreground" aria-hidden>
         블로그 리뷰체험 서치
       </span>
-    </div>
+    </Link>
   );
 }
 
@@ -28,14 +39,17 @@ export function SiteHeader({
   draft,
   onDraftChange,
   onSubmit,
+  onHome,
 }: {
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  /** 로고를 눌렀을 때 — 처음 화면 상태로 */
+  onHome?: () => void;
 }) {
   return (
     <header className="flex items-center gap-3 px-4 pt-3 pb-2">
-      <Wordmark />
+      <Wordmark onHome={onHome} />
       <form
         role="search"
         className="group relative min-w-0 flex-1"
