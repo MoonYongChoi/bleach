@@ -51,7 +51,7 @@ export function SortSheet({
                     <span className="text-xs text-muted-foreground">{option.hint}</span>
                     {selected && (
                       <span className="text-[11px] text-muted-foreground/80">
-                        같은 순위끼리는 {tieBreakLabel(option.value, hasRateFilter)} 순
+                        {tieBreakLabel(option.value, hasRateFilter)}
                       </span>
                     )}
                   </span>

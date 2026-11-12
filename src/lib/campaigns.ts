@@ -48,11 +48,18 @@ const SORT_CHAINS: Record<SortOption, SortKey[]> = {
   recruit: ["recruit", "rate", "deadline", "latest"],
   latest: ["latest", "deadline", "rate"],
 };
-const SORT_KEY_LABELS: Record<SortKey, string> = {
-  deadline: "마감 임박",
-  rate: "경쟁 낮은",
-  recruit: "모집 많은",
-  latest: "최신 등록",
+// 정렬 시트 안내 문장: "{1순위가 같으면} {2순위} 체험단부터 보여줘요"
+const SORT_KEY_SAME: Record<SortKey, string> = {
+  deadline: "마감일이 같으면",
+  rate: "경쟁률이 같으면",
+  recruit: "모집인원이 같으면",
+  latest: "같은 날 올라왔으면",
+};
+const SORT_KEY_FIRST: Record<SortKey, string> = {
+  deadline: "마감이 가까운",
+  rate: "경쟁이 낮은",
+  recruit: "많이 뽑는",
+  latest: "최근 올라온",
 };
 
 export function sortChain(sort: SortOption, hasRateFilter: boolean): SortKey[] {
@@ -61,9 +68,10 @@ export function sortChain(sort: SortOption, hasRateFilter: boolean): SortKey[] {
   return [primary, "rate", ...rest.filter((k) => k !== "rate")];
 }
 
-/** 정렬 시트에 보여 줄 보조 순서 설명 (예: "경쟁 낮은 → 모집 많은 → 최신 등록") */
+/** 정렬 시트에 보여 줄 보조 순서 안내 (예: "마감일이 같으면 경쟁이 낮은 체험단부터 보여줘요") */
 export function tieBreakLabel(sort: SortOption, hasRateFilter: boolean): string {
-  return sortChain(sort, hasRateFilter).slice(1).map((k) => SORT_KEY_LABELS[k]).join(" → ");
+  const [primary, second] = sortChain(sort, hasRateFilter);
+  return `${SORT_KEY_SAME[primary]} ${SORT_KEY_FIRST[second]} 체험단부터 보여줘요`;
 }
 
 export interface ApplyRateRange {
