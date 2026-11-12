@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 from typing import Optional
 from urllib.parse import quote
@@ -45,7 +45,19 @@ def _image_url(image_key: Optional[str]) -> Optional[str]:
 
 
 API_LIMIT = 16  # 사이트 화면과 같게 — 100을 주면 첫 쪽(96개)과 둘째 쪽이 겹쳐 멈췄다 (2026-11-06)
-API_PAGE_CAP = 100  # 사이트가 이 쪽수에서 목록을 끊는 것으로 보인다 (2026-11-12 실행 로그)
+API_PAGE_CAP = 100
+QUICK_DELAY_MS = 500
+FULL_DELAY_MS = 1200
+FULL_CRAWL_HOUR_KST = 3  # 매일 이 시각 회차만 지역별 전체 수집 (매시 17분 실행 → 03:17)
+
+
+def full_crawl_now() -> bool:
+    """지역별 전체 수집을 할 회차인지. REVIEWNOTE_FULL=1 이면 시각과 상관없이 전체 수집."""
+    import os
+
+    if os.environ.get("REVIEWNOTE_FULL") == "1":
+        return True
+    return datetime.now(timezone(timedelta(hours=9))).hour == FULL_CRAWL_HOUR_KST  # 사이트가 이 쪽수에서 목록을 끊는 것으로 보인다 (2026-11-12 실행 로그)
 
 
 def obj_to_raw(obj: dict) -> Optional[RawCampaign]:
@@ -136,6 +148,9 @@ class ReviewnoteConnector(Connector):
         seen: set[str] = set()
         capped: list[str] = []
         requests_made = 0
+        full = full_crawl_now()
+        # 지역별 전체 수집은 요청이 1,000번을 넘어 빨리 보내면 사이트가 막는다 (2026-11-12, 15분쯤에 403)
+        delay_ms = FULL_DELAY_MS if full else QUICK_DELAY_MS
 
         with sync_playwright() as p:
             browser = p.chromium.launch()
@@ -182,28 +197,38 @@ class ReviewnoteConnector(Connector):
                     expired_pages = expired_pages + 1 if open_count == 0 else 0
                     if expired_pages >= 3:
                         return False
-                    page.wait_for_timeout(200)  # 사이트 부담 줄이기
+                    page.wait_for_timeout(delay_ms)  # 사이트 부담 줄이기
                 return True
 
-            # 지역 없이 본 목록(모집 중만 나온다)도 먼저 읽는다 — 지역에 안 묶인 캠페인까지 잡으려고
-            read_list({})
-            sidos = call("/api/v2/sidos", {}) or []
             split: list[str] = []
-            for sido in sidos:
-                name = sido.get("name")
-                if not name or not read_list({"city": name}):
-                    continue
-                # 100쪽 상한에 걸린 시/도(서울·경기 등) → 시/군/구별로 다시
-                split.append(name)
-                for gugun in sido.get("guguns") or []:
-                    if gugun.get("id") is not None and read_list({"city": name, "gugunSelected": gugun["id"]}):
-                        capped.append(f"{name} {gugun.get('name')}")
+            blocked = None
+            try:
+                # 지역 없이 본 목록(모집 중만, 최신 1,600건까지) — 매시간은 이것만
+                if read_list({}):
+                    capped.append("전체")
+                if full:
+                    sidos = call("/api/v2/sidos", {}) or []
+                    for sido in sidos:
+                        name = sido.get("name")
+                        if not name or not read_list({"city": name}):
+                            continue
+                        # 100쪽 상한에 걸린 시/도(서울·경기 등) → 시/군/구별로 다시
+                        split.append(name)
+                        for gugun in sido.get("guguns") or []:
+                            if gugun.get("id") is not None and read_list({"city": name, "gugunSelected": gugun["id"]}):
+                                capped.append(f"{name} {gugun.get('name')}")
+                    capped = [c for c in capped if c != "전체"]  # 전체 목록의 상한은 지역별로 읽어 메웠다
+            except RuntimeError as e:
+                # 도중에 막혀도 받은 것은 쓴다 — 다만 끝까지 못 읽었으니 종료 처리는 하지 않는다
+                blocked = str(e)
+                print(f"[리뷰노트] 도중에 멈춤 ({requests_made}번째 요청): {blocked[:160]}")
             browser.close()
 
         got = len(campaigns)
-        # 시/군/구까지 나눠도 상한에 걸린 목록이 없을 때만 "끝까지 읽음" (사라진 캠페인 종료 처리의 조건)
-        self.complete = not capped
-        print(f"[리뷰노트] 지역별 목록 API {requests_made}회 → 모집 중 캠페인 {got}건"
+        # 하루 한 번 전체 수집에서, 막히지 않고 시/군/구까지 상한 없이 다 읽었을 때만 "끝까지 읽음"
+        # (목록에서 사라진 캠페인 종료 처리의 조건). 매시간 수집은 최신 1,600건만 보므로 종료 처리하지 않는다.
+        self.complete = full and not capped and blocked is None
+        print(f"[리뷰노트] {'지역별 전체' if full else '최신 목록'} API {requests_made}회 → 모집 중 캠페인 {got}건"
               + (f", 시/군/구로 나눈 시/도: {split}" if split else "")
               + (f", 그래도 상한에 걸린 목록: {capped[:5]}" if capped else ""))
         if not campaigns:

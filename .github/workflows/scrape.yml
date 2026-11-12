@@ -13,6 +13,10 @@ on:
         description: "DB에 쓰지 않고 정제 리포트만"
         type: boolean
         default: false
+      reviewnote_full:
+        description: "리뷰노트를 지역별로 전체 수집 (평소엔 매일 03:17 회차만, 오래 걸림)"
+        type: boolean
+        default: false
 
 # 한 회차가 한 시간을 넘기면 다음 회차는 앞 회차가 끝날 때까지 기다린다 (동시에 DB에 쓰지 않게)
 concurrency:
@@ -22,7 +26,8 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 매일 03:17 회차는 리뷰노트 지역별 전체 수집(요청 1,000번+, 천천히)이 더해져 길다
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: scraper
@@ -46,6 +51,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REVU_ID: ${{ secrets.REVU_ID }}
           REVU_PW: ${{ secrets.REVU_PW }}
+          REVIEWNOTE_FULL: ${{ inputs.reviewnote_full && '1' || '' }}
         run: |
           args=""
           if [ -n "${{ inputs.only }}" ]; then args="$args --only ${{ inputs.only }}"; fi
