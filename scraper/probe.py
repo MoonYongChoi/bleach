@@ -282,6 +282,38 @@ def probe_js_api(url: str, needle: str) -> None:
         browser.close()
 
 
+def probe_fetch_in_page(page_url: str, paths: list[str]) -> None:
+    """page_url을 연 뒤 그 페이지 안에서 paths를 fetch — JSON이면 objects 수, has_more, page, city 분포를 찍는다."""
+    import json
+    from collections import Counter
+
+    from playwright.sync_api import sync_playwright
+
+    print(f"\n===== [페이지 안 fetch] {page_url}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle", timeout=45000)
+        for path in paths:
+            res = page.evaluate(
+                "async (u) => { const r = await fetch(u, {credentials: 'same-origin'}); return {s: r.status, t: await r.text()}; }",
+                path,
+            )
+            try:
+                body = json.loads(res["t"])
+            except ValueError:
+                print(f"  {path}: {res['s']} {res['t'][:200]!r}")
+                continue
+            if isinstance(body, dict) and "objects" in body:
+                objs = body["objects"]
+                cities = Counter(o.get("city") for o in objs)
+                print(f"  {path}: {res['s']} objects={len(objs)} has_more={body.get('has_more')} page={body.get('page')} "
+                      f"keys={list(body)[:8]} city={dict(cities.most_common(5))}")
+            else:
+                print(f"  {path}: {res['s']} {json.dumps(body, ensure_ascii=False)[:600]}")
+        browser.close()
+
+
 def probe_text(url: str) -> None:
     """상세 페이지의 보이는 글자를 줄 단위로 그대로 출력 — 날짜·인원이 어떤 문장으로 적혀 있는지 본다."""
     print(f"\n===== [페이지 글자] {url}")
@@ -313,6 +345,9 @@ if __name__ == "__main__":
     if args and args[0] == "--text":  # python probe.py --text <url> [<url> ...]
         for target in args[1:]:
             probe_text(target)
+        sys.exit(0)
+    if args and args[0] == "--fetch-in-page":  # python probe.py --fetch-in-page <page url> <path> [<path> ...]
+        probe_fetch_in_page(args[1], args[2:])
         sys.exit(0)
     if args and args[0] == "--js-api":  # python probe.py --js-api <page url> <api path>
         probe_js_api(args[1], args[2])
