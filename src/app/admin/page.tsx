@@ -26,6 +26,7 @@ type ScrapeRun = {
   fetched: number;
   saved: number;
   new_count: number;
+  closed_count: number;
   error: string | null;
 };
 
@@ -142,7 +143,7 @@ function RunList({ runs }: { runs: ScrapeRun[] }) {
   for (const r of runs) groups.set(r.run_id, [...(groups.get(r.run_id) ?? []), r]);
 
   return (
-    <Section title="수집 회차" note="회차마다 플랫폼별 결과 · 읽음 = 사이트 목록 건수, 저장 = 정제 후 DB에 쓴 건수, 신규 = 처음 들어온 캠페인">
+    <Section title="수집 회차" note="회차마다 플랫폼별 결과 · 읽음 = 사이트 목록 건수, 저장 = 정제 후 DB에 쓴 건수, 신규 = 처음 들어온 캠페인, 종료 = 목록에서 사라져 내린 캠페인">
       {groups.size === 0 ? (
         <p className="px-3 py-4 text-sm text-muted-foreground">아직 기록이 없습니다. 다음 정기 수집부터 쌓입니다.</p>
       ) : (
@@ -155,6 +156,7 @@ function RunList({ runs }: { runs: ScrapeRun[] }) {
               <th className={cn(TH, "text-right")}>읽음</th>
               <th className={cn(TH, "text-right")}>저장</th>
               <th className={cn(TH, "text-right")}>신규</th>
+              <th className={cn(TH, "text-right")}>종료</th>
               <th className={TH}>걸린 시간</th>
             </tr>
           </thead>
@@ -177,6 +179,7 @@ function RunList({ runs }: { runs: ScrapeRun[] }) {
                     <td className={cn(TD, "text-right")}>{r.fetched.toLocaleString()}</td>
                     <td className={cn(TD, "text-right")}>{r.saved.toLocaleString()}</td>
                     <td className={cn(TD, "text-right font-medium")}>{r.new_count.toLocaleString()}</td>
+                    <td className={cn(TD, "text-right text-muted-foreground")}>{(r.closed_count ?? 0).toLocaleString()}</td>
                     <td className={cn(TD, "text-muted-foreground")}>{seconds(r.started_at, r.finished_at)}</td>
                   </tr>
                 ))}

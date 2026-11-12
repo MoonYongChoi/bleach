@@ -23,7 +23,8 @@ def _now() -> datetime:
 
 def run(connector: Connector, log: list[dict] | None = None) -> list:
     """커넥터 하나를 돌린다. log를 주면 플랫폼별 수집 기록(scrape_runs 한 줄)을 덧붙인다."""
-    entry = {"platform": connector.label, "started_at": _now(), "status": "ok", "fetched": 0, "error": None}
+    entry = {"platform": connector.label, "started_at": _now(), "status": "ok", "fetched": 0, "error": None,
+             "complete": False}
     result: list = []
     missing = [name for name in connector.required_env if not os.environ.get(name)]
     if missing:
@@ -34,6 +35,8 @@ def run(connector: Connector, log: list[dict] | None = None) -> list:
             items = connector.fetch()
             print(f"[{connector.label}] 수집 {len(items)}건")
             entry["fetched"] = len(items)
+            # 목록을 끝까지 읽은 회차만, 목록에서 사라진 캠페인을 모집 종료로 내릴 수 있다
+            entry["complete"] = bool(getattr(connector, "complete", False))
             result = [(connector, item) for item in items]
         except Exception as e:  # noqa: BLE001 - 한 플랫폼 실패가 전체를 막으면 안 됨
             print(f"[{connector.label}] 실패: {e}")

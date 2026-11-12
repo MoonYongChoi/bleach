@@ -160,7 +160,10 @@ class SeouloubaConnector(Connector):
         offset, page = card_count(html), 2
         if offset < 192:  # 첫 화면이 다 차지 않았으면 더보기가 없다
             return found
-        while page <= MAX_PAGES:
+        while True:
+            if page > MAX_PAGES:
+                self.complete = False  # 상한에 걸려 끝까지 못 읽음
+                break
             time.sleep(DELAY)
             data = {"cat": cat, "qq": "", "q": "", "q1": "", "q2": "", "ar1": ar1, "ar2": ar2,
                     "sort": "latest", "pt": "", "page": page, "more": offset, "rows": PAGE_ROWS}
@@ -177,6 +180,7 @@ class SeouloubaConnector(Connector):
         return found
 
     def fetch(self) -> list[RawCampaign]:
+        self.complete = True  # 목록 하나라도 상한에 걸리면 _list가 False로 바꾼다
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
         by_id: dict[str, RawCampaign] = {}

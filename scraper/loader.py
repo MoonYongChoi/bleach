@@ -72,10 +72,37 @@ _COLUMNS = {
 NEW_COUNT_SQL = "select platform, count(*) from public.campaigns where created_at = now() group by platform"
 
 RUN_SQL = """
-insert into public.scrape_runs (run_id, platform, started_at, finished_at, status, fetched, saved, new_count, error)
+insert into public.scrape_runs (run_id, platform, started_at, finished_at, status, fetched, saved, new_count,
+                                closed_count, error)
 values (%(run_id)s, %(platform)s, %(started_at)s, %(finished_at)s, %(status)s, %(fetched)s, %(saved)s,
-        %(new_count)s, %(error)s)
+        %(new_count)s, %(closed_count)s, %(error)s)
 """
+
+# 목록을 끝까지 읽은 플랫폼에서, 이번 회차에 안 보인 모집 중 캠페인 = 모집이 끝났거나 내려간 캠페인.
+# upsert가 같은 트랜잭션에서 last_seen_at = now()로 바꾸므로, 이번에 본 행은 now()보다 작지 않다.
+UNSEEN_COUNT_SQL = """
+select count(*) from public.campaigns where platform = %s and is_active and last_seen_at < now()
+"""
+CLOSE_UNSEEN_SQL = """
+update public.campaigns set is_active = false
+where platform = %s and is_active and last_seen_at < now()
+"""
+# 한 번에 이 비율보다 많이 사라지면 사이트 구조가 바뀌었거나 덜 읽은 것일 수 있어 내리지 않는다
+MAX_CLOSE_RATIO = 0.5
+
+
+def close_unseen(cur, platform: str, saved: int) -> int:
+    """목록에서 사라진 캠페인을 내리고 그 수를 돌려준다. 너무 많으면 건너뛰고 0."""
+    cur.execute(UNSEEN_COUNT_SQL, (platform,))
+    unseen = cur.fetchone()[0]
+    if unseen == 0:
+        return 0
+    if unseen > MAX_CLOSE_RATIO * (unseen + saved):
+        print(f"[{platform}] 목록에서 사라진 캠페인 {unseen}건 — 이번에 본 {saved}건에 비해 너무 많아 내리지 않음 (확인 필요)")
+        return 0
+    cur.execute(CLOSE_UNSEEN_SQL, (platform,))
+    print(f"[{platform}] 목록에서 사라진 캠페인 {cur.rowcount}건 모집 종료 처리")
+    return cur.rowcount
 
 
 def upsert_campaigns(campaigns: list[dict], runs: list[dict] | None = None) -> tuple[int, int]:
@@ -103,11 +130,17 @@ def upsert_campaigns(campaigns: list[dict], runs: list[dict] | None = None) -> t
                 saved_by_platform: dict[str, int] = {}
                 for r in rows:
                     saved_by_platform[r["platform"]] = saved_by_platform.get(r["platform"], 0) + 1
+                closed_by_platform = {
+                    r["platform"]: close_unseen(cur, r["platform"], saved_by_platform.get(r["platform"], 0))
+                    for r in runs
+                    if r.get("status") == "ok" and r.get("complete") and saved_by_platform.get(r["platform"])
+                }
                 psycopg2.extras.execute_batch(cur, RUN_SQL, [
                     {
                         **r,
                         "saved": saved_by_platform.get(r["platform"], 0),
                         "new_count": new_by_platform.get(r["platform"], 0),
+                        "closed_count": closed_by_platform.get(r["platform"], 0),
                         "error": (r.get("error") or None) and str(r["error"])[:300],
                     }
                     for r in runs

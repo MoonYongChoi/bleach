@@ -173,3 +173,6 @@ create index if not exists campaigns_active_deadline_chain_idx
 create index if not exists campaigns_active_rate_chain_idx
   on public.campaigns (apply_rate asc nulls last, deadline_date asc nulls last, recruit_count desc nulls last, created_at desc, id)
   where is_active;
+
+-- 그 회차에 목록에서 사라져 모집 종료 처리한 캠페인 수 (scraper/loader.py close_unseen)
+alter table public.scrape_runs add column if not exists closed_count integer not null default 0;

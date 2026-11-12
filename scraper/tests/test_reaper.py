@@ -47,3 +47,32 @@ class JudgeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CloseUnseenTest(unittest.TestCase):
+    """목록을 끝까지 읽은 회차에서 사라진 캠페인 내리기 (loader.close_unseen)"""
+
+    class Cur:
+        def __init__(self, unseen):
+            self.unseen, self.updated, self.rowcount = unseen, False, 0
+
+        def execute(self, sql, params):
+            if sql.strip().startswith("update"):
+                self.updated, self.rowcount = True, self.unseen
+
+        def fetchone(self):
+            return (self.unseen,)
+
+    def test_closes_a_few(self):
+        from loader import close_unseen
+
+        cur = self.Cur(30)
+        self.assertEqual(close_unseen(cur, "레뷰", 3800), 30)
+        self.assertTrue(cur.updated)
+
+    def test_skips_when_too_many_vanish(self):
+        from loader import close_unseen
+
+        cur = self.Cur(5000)
+        self.assertEqual(close_unseen(cur, "레뷰", 100), 0)
+        self.assertFalse(cur.updated)

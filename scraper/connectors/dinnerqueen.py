@@ -138,6 +138,7 @@ class DinnerqueenConnector(Connector):
                     new += 1
             return new
 
+        self.complete = False
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page = browser.new_page(user_agent=HEADERS["User-Agent"])
@@ -172,6 +173,7 @@ class DinnerqueenConnector(Connector):
                 if not found:
                     if "qz-dq-card" in layout:
                         print(f"[디너의여왕] page={page_no}: 카드가 모두 마감 — 목록 끝으로 봄")
+                    self.complete = True
                     break
                 # 같은 쪽이 되풀이되면(새 카드 0) 두 번까지 봐주고 멈춘다
                 stale = stale + 1 if add(found) == 0 else 0

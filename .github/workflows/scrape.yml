@@ -2,9 +2,8 @@ name: Scrape campaigns
 
 on:
   schedule:
-    # GitHub Actions cron은 UTC만 받는다 — 한국 시간(KST = UTC+9)에서 9시간을 빼서 적는다.
-    # 하루 4회 KST 09:30 / 15:30 / 21:30 / 03:30 = UTC 00:30 / 06:30 / 12:30 / 18:30
-    - cron: "30 0,6,12,18 * * *"
+    # 매시 17분 (정각은 GitHub 예약 실행이 몰려 늦어지기 쉽다). cron은 UTC 기준이지만 매시라 차이 없음.
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       only:
@@ -14,6 +13,11 @@ on:
         description: "DB에 쓰지 않고 정제 리포트만"
         type: boolean
         default: false
+
+# 한 회차가 한 시간을 넘기면 다음 회차는 앞 회차가 끝날 때까지 기다린다 (동시에 DB에 쓰지 않게)
+concurrency:
+  group: scrape
+  cancel-in-progress: false
 
 jobs:
   scrape:

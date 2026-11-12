@@ -130,8 +130,10 @@ class RevuConnector(Connector):
                      "reels": "reels", "shorts": "shorts", "tiktok": "tiktok"}
 
     def fetch(self) -> list[RawCampaign]:
+        self.complete = False
         try:
-            return _fetch_api()
+            campaigns, self.complete = _fetch_api()
+            return campaigns
         except Exception as e:  # noqa: BLE001 - API가 바뀌면 예전 화면 읽기(첫 화면만)로라도 수집
             print(f"[레뷰] 목록 API 수집 실패 → 화면 읽기로 대신함: {type(e).__name__}: {e}")
             return _fetch()
@@ -221,7 +223,8 @@ def api_item_to_raw(item: dict, cat: str, today: Optional[date] = None) -> Optio
     )
 
 
-def _fetch_api() -> list[RawCampaign]:
+def _fetch_api() -> tuple[list[RawCampaign], bool]:
+    """(모집 중 캠페인, 두 카테고리 모두 목록 끝까지 읽었는지)"""
     from urllib.parse import urlencode
 
     from playwright.sync_api import sync_playwright
@@ -231,6 +234,7 @@ def _fetch_api() -> list[RawCampaign]:
     campaigns: list[RawCampaign] = []
     seen: set[str] = set()
     label_counts: Counter = Counter()
+    complete = True
     with sync_playwright() as p:
         browser = p.chromium.launch()
         context = browser.new_context()
@@ -252,6 +256,7 @@ def _fetch_api() -> list[RawCampaign]:
         for cat in CATEGORIES:
             total = None
             kept = 0
+            reached_end = False
             for page_no in range(1, API_MAX_PAGES + 1):
                 query = [("cat", cat), ("limit", API_LIMIT)] + [("media[]", m) for m in API_MEDIA] + [
                     ("page", page_no), ("sort", "latest"), ("type", "play")]
@@ -269,15 +274,17 @@ def _fetch_api() -> list[RawCampaign]:
                         campaigns.append(raw)
                         kept += 1
                 if not items or (total is not None and page_no * API_LIMIT >= total):
+                    reached_end = True
                     break
                 page.wait_for_timeout(500)  # 사이트 부담 줄이기
+            complete = complete and reached_end
             print(f"[레뷰] API cat={cat}: 사이트 총 {total}건 → 모집 중 {kept}건 수집")
         browser.close()
 
     print(f"[레뷰] 사이트 분류 표기 상위: {label_counts.most_common(15)}")
     if not campaigns:
         raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
-    return campaigns
+    return campaigns, complete
 
 
 def _fetch() -> list[RawCampaign]:

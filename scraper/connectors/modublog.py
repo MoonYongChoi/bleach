@@ -101,11 +101,14 @@ class ModublogConnector(Connector):
             page = context.new_page()
             page.goto(LIST_URL, wait_until="networkidle", timeout=45000)
             page.wait_for_selector("div.c_box", timeout=20000)
+            self.complete = False
             for _ in range(self.scrolls):
                 before = page.locator("div.c_box").count()
                 page.mouse.wheel(0, 6000)
                 page.wait_for_timeout(1500)  # 무한스크롤 요청 간격 겸 사이트 부담 줄이기
                 if page.locator("div.c_box").count() == before:
+                    # 모집 중 카드(c_box) 뒤로는 마감 카드(f_box)만 이어진다 — 더 안 늘면 목록 끝
+                    self.complete = True
                     break
             cards = page.eval_on_selector_all("div.c_box", CARD_JS)
             browser.close()

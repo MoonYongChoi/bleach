@@ -38,7 +38,7 @@
 - [x] 파블로(Pavlovu) 스크래퍼 작성 — `scraper/pavlovu_scraper.py` (requests+BeautifulSoup)
 - [x] 리뷰노트(Reviewnote) 스크래퍼 작성 — `scraper/reviewnote_scraper.py` (requests, `__NEXT_DATA__` 파싱)
 - [x] Supabase에 upsert하는 적재 스크립트 작성 — `scraper/loader.py` (`source_url` 기준 ON CONFLICT)
-- [x] GitHub Actions 워크플로 작성 — `.github/workflows/scrape.yml` (하루 4회: 09:30/15:30/21:30/03:30 KST)
+- [x] GitHub Actions 워크플로 작성 — `.github/workflows/scrape.yml` (매시 17분. 목록을 끝까지 읽은 회차는 사라진 캠페인을 바로 종료 처리)
   - [ ] GitHub repo secrets 등록 필요: `DATABASE_URL`, `REVU_ID`, `REVU_PW`
 - [x] 플랫폼별 데이터 정제 레이어 — `scraper/normalize.py` (제목/마감일(KST)/인원/이미지/표준 8종 분류/지역/유형) + `scraper/tests/`
   - [x] 품질 리포트: `python run_all.py --dry-run`(수집 직후), `python quality.py`(DB)

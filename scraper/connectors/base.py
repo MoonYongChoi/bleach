@@ -116,6 +116,9 @@ class Connector:
     # 데이터센터(해외·국내 클라우드) IP를 막는 사이트: GitHub Actions 기본 실행에서는 빼고,
     # 가정용 인터넷 PC에서 --only <key>로 따로 돌린다 (서울오빠)
     local_only: ClassVar[bool] = False
+    # fetch()가 사이트 목록을 끝까지 읽었으면 True로 둔다 (페이지 상한·오류로 중간에 멈췄으면 False).
+    # True인 회차에서 목록에 안 보인 모집 중 캠페인은 모집이 끝난 것으로 보고 바로 내린다 (loader.close_unseen).
+    complete: bool = False
     # 이 플랫폼 고유의 유형/채널 표기 -> 표준값. 공통 한국어 표기("방문", "배송" 등)는 normalize에 있다.
     type_hints: ClassVar[dict[str, str]] = {}
     channel_hints: ClassVar[dict[str, str]] = {}

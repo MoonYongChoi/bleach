@@ -105,6 +105,7 @@ class ReviewnoteConnector(Connector):
     }
 
     def fetch(self) -> list[RawCampaign]:
+        self.complete = False
         try:
             return self._fetch_api()
         except Exception as e:  # noqa: BLE001 - API가 막혀도 첫 화면 96개는 받는다
@@ -152,7 +153,10 @@ class ReviewnoteConnector(Connector):
                         seen.add(raw.source_url)
                         campaigns.append(raw)
                         new += 1
-                if not objects or not body.get("has_more") or new == 0:
+                if not objects or not body.get("has_more"):
+                    self.complete = True
+                    break
+                if new == 0:
                     break
                 page.wait_for_timeout(300)  # 사이트 부담 줄이기
             browser.close()
