@@ -25,8 +25,29 @@ export const AD_EVERY = 8;
 /** 한 화면(무한 스크롤을 계속 내려도)에서 넣을 광고 칸의 최대 개수 */
 export const AD_MAX = 6;
 
-/** index번째(0부터) 캠페인 바로 뒤에 광고를 넣을지 */
-export function adAfter(index: number): boolean {
+// 쿠팡 파트너스 다이나믹 배너 (파트너스에서 만든 값). 환경변수로 바꾸거나 NEXT_PUBLIC_COUPANG_ID=off 로 끈다.
+export const COUPANG = {
+  id: Number(process.env.NEXT_PUBLIC_COUPANG_ID || 1049608),
+  trackingCode: process.env.NEXT_PUBLIC_COUPANG_TRACKING || "AF6737478",
+  template: "carousel",
+  width: 320,
+  height: 100,
+};
+export const coupangEnabled = process.env.NEXT_PUBLIC_COUPANG_ID !== "off" && Number.isInteger(COUPANG.id) && COUPANG.id > 0;
+
+export type AdKind = "coupang" | "adsense";
+
+/**
+ * index번째(0부터) 캠페인 바로 뒤에 넣을 광고 (없으면 null).
+ * 8개마다 한 칸, 최대 6칸 — 1·3·5번째 칸은 쿠팡 파트너스, 2·4·6번째는 애드센스.
+ * 한쪽만 켜져 있으면 그쪽이 모든 칸을 쓴다. 애드센스는 이 사이트가 승인되기 전에는 채워지지 않아 칸째 숨는다.
+ */
+export function adAfter(index: number): AdKind | null {
   const count = index + 1;
-  return adsEnabled && count % AD_EVERY === 0 && count / AD_EVERY <= AD_MAX;
+  if (count % AD_EVERY !== 0 || count / AD_EVERY > AD_MAX) return null;
+  const nth = count / AD_EVERY; // 1부터
+  if (coupangEnabled && adsEnabled) return nth % 2 === 1 ? "coupang" : "adsense";
+  if (coupangEnabled) return "coupang";
+  if (adsEnabled) return "adsense";
+  return null;
 }
