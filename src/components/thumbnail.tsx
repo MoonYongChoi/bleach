@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CoffeeIcon,
   GiftIcon,
@@ -53,6 +53,16 @@ export function DefaultThumbnail({ category }: { category: string | null }) {
 export function Thumbnail({ src, category }: { src: string | null; category: string | null }) {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // 첫 화면은 서버가 그린 HTML이라, React가 붙기 전에 이미지가 다 받아지면(캐시·빠른 응답) onLoad/onError를
+  // 놓친다 → 투명한 채로 남거나 기본 썸네일로 안 바뀐다. 붙는 순간 이미 끝났는지 직접 확인한다.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !img.complete) return;
+    if (img.naturalWidth > 0) setLoaded(true);
+    else setFailed(true);
+  }, []);
 
   if (!src || failed) {
     return <DefaultThumbnail category={category} />;
@@ -61,6 +71,7 @@ export function Thumbnail({ src, category }: { src: string | null; category: str
     <div className={cn(FRAME, "overflow-hidden bg-muted")}>
       {/* eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet */}
       <img
+        ref={imgRef}
         src={src}
         alt=""
         loading="lazy"
