@@ -44,7 +44,6 @@ def _image_url(image_key: Optional[str]) -> Optional[str]:
 
 
 API_LIMIT = 16  # 사이트 화면과 같게 — 100을 주면 첫 쪽(96개)과 둘째 쪽이 겹쳐 멈췄다 (2026-11-06)
-API_MAX_PAGES = 600
 API_PAGE_CAP = 100  # 사이트가 이 쪽수에서 목록을 끊는 것으로 보인다 (2026-11-12 실행 로그)
 
 
@@ -124,48 +123,76 @@ class ReviewnoteConnector(Connector):
         return [r for r in (obj_to_raw(o) for o in objects) if r]
 
     def _fetch_api(self) -> list[RawCampaign]:
+        """목록 API를 지역별로 나눠 끝까지 읽는다.
+
+        2026-11-12 조사: 응답에 total_count가 있고, 한 목록은 100쪽(1,600건)까지만 준다. 전체(약 1.9만 건)를 받으려면
+        city(시/도 이름)로 나누고, 그래도 1,600건을 넘는 시/도(서울·경기 등)는 gugunSelected(시/군/구 id)로 더 나눈다.
+        시/도·시/군/구 목록은 사이트가 쓰는 /api/v2/sidos에서 받는다.
+        """
         from playwright.sync_api import sync_playwright
 
         campaigns: list[RawCampaign] = []
         seen: set[str] = set()
-        pages = 0
+        capped: list[str] = []
+        requests_made = 0
+
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page = browser.new_page()
             page.goto(LIST_URL, wait_until="networkidle", timeout=45000)
-            for page_no in range(API_MAX_PAGES):
+
+            def call(path: str, params: dict) -> dict:
+                nonlocal requests_made
+                requests_made += 1
                 data = page.evaluate(
-                    """async ([n, limit]) => {
-                        const q = new URLSearchParams({s: 'default', limit, page: n});
-                        const r = await fetch('/api/v2/campaigns?' + q, {credentials: 'same-origin'});
+                    """async ([path, params]) => {
+                        const r = await fetch(path + '?' + new URLSearchParams(params), {credentials: 'same-origin'});
                         return {status: r.status, body: r.status === 200 ? await r.json() : await r.text()};
                     }""",
-                    [page_no, API_LIMIT],
+                    [path, {k: str(v) for k, v in params.items()}],
                 )
                 if data["status"] != 200:
-                    raise RuntimeError(f"page={page_no}: HTTP {data['status']} {str(data['body'])[:120]}")
-                body = data["body"] or {}
-                objects = body.get("objects") or []
-                pages += 1
-                new = 0
-                for obj in objects:
-                    raw = obj_to_raw(obj)
-                    if raw and raw.source_url not in seen:
-                        seen.add(raw.source_url)
-                        campaigns.append(raw)
-                        new += 1
-                if not objects or not body.get("has_more"):
-                    # 2026-11-12: 사이트가 100쪽(1,600건)에서 has_more=false를 준다 — 목록 끝이 아니라 상한일 수 있어
-                    # 그 경우는 끝까지 읽었다고 보지 않는다 (사라진 캠페인을 잘못 내리지 않게)
-                    self.complete = pages < API_PAGE_CAP
-                    if not self.complete:
-                        print(f"[리뷰노트] {pages}쪽에서 목록이 끝남 — 사이트 상한으로 보고 종료 처리는 하지 않음")
-                    break
-                if new == 0:
-                    break
-                page.wait_for_timeout(300)  # 사이트 부담 줄이기
+                    raise RuntimeError(f"{path} {params}: HTTP {data['status']} {str(data['body'])[:120]}")
+                return data["body"]
+
+            def read_list(label: str, params: dict, first: Optional[dict] = None) -> None:
+                """한 목록을 끝까지. 100쪽 상한에 닿으면 capped에 남긴다."""
+                for page_no in range(API_PAGE_CAP):
+                    body = first if (page_no == 0 and first is not None) else call(
+                        "/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": page_no, **params})
+                    objects = body.get("objects") or []
+                    for obj in objects:
+                        raw = obj_to_raw(obj)
+                        if raw and raw.source_url not in seen:
+                            seen.add(raw.source_url)
+                            campaigns.append(raw)
+                    if not objects or not body.get("has_more"):
+                        return
+                    page.wait_for_timeout(200)  # 사이트 부담 줄이기
+                capped.append(label)
+
+            overall = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": 0})
+            site_total = overall.get("total_count")
+            sidos = call("/api/v2/sidos", {}) or []
+            for sido in sidos:
+                name = sido.get("name")
+                if not name:
+                    continue
+                first = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": 0, "city": name})
+                if (first.get("total_count") or 0) <= API_LIMIT * API_PAGE_CAP:
+                    read_list(name, {"city": name}, first)
+                    continue
+                # 이 시/도는 한 목록에 다 안 들어간다 → 시/군/구별로
+                for gugun in sido.get("guguns") or []:
+                    if gugun.get("id") is not None:
+                        read_list(f"{name} {gugun.get('name')}", {"city": name, "gugunSelected": gugun["id"]})
             browser.close()
-        print(f"[리뷰노트] 목록 API {pages}쪽 → 캠페인 {len(campaigns)}건")
+
+        got = len(campaigns)
+        # 지역에 안 묶이는 캠페인이 있을 수 있어, 사이트 전체 건수의 98% 이상을 받았고 상한에 걸린 목록이 없을 때만 "끝까지"
+        self.complete = not capped and bool(site_total) and got >= 0.98 * site_total
+        print(f"[리뷰노트] 지역별 목록 API {requests_made}회 → 캠페인 {got}건 (사이트 전체 {site_total}건)"
+              + (f", 100쪽 상한에 걸린 목록: {capped[:5]}" if capped else ""))
         if not campaigns:
             raise RuntimeError("목록 API에서 캠페인을 하나도 받지 못함")
         return campaigns
