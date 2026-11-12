@@ -52,6 +52,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 - Vercel 환경변수 `ADMIN_PASSWORD`(필수), `ADMIN_USER`(선택, 기본 `admin`)
 - `ADMIN_PASSWORD`가 없으면 /admin은 404
+- 이용 기록: `/admin/logs`(원본 기록 — 조건 조회·CSV), `/admin/logs/summary`(요약). 원본은 공개 키로 못 읽게 막혀 있어
+  Vercel 환경변수 `SUPABASE_SERVICE_ROLE_KEY`(Supabase → Project Settings → API Keys의 service_role/secret 키, 서버 전용)가 필요하다.
+  자유로운 쿼리는 Supabase SQL 편집기에서 `access_logs`를 조회한다.
 - 수집 회차 기록은 `scraper/run_all.py`가 `scrape_runs` 테이블에 남긴다 (`supabase/migrations/20261105_scrape_runs.sql`)
 
 ## 서울오빠 수집 (가정용 PC)
