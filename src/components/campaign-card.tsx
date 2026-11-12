@@ -12,6 +12,7 @@ import {
   REVIEW_CHANNEL_LABELS,
 } from "@/lib/campaigns";
 import { useTodayKst } from "@/lib/use-today";
+import { track } from "@/lib/track";
 import { cn } from "cn";
 
 /** 썸네일 왼쪽 아래에 얹는 마감 표시. 3일 이하는 코랄로 눈에 띄게. */
@@ -75,6 +76,7 @@ export function CampaignCard({
     >
       <a
         href={campaign.source_url}
+        onClick={() => track("click", { id: campaign.id, platform: campaign.platform, title: campaign.title.slice(0, 60) })}
         target="_blank"
         rel="noopener noreferrer"
         className="flex min-w-0 flex-1 gap-3 px-4 py-3.5 pr-11 min-[360px]:gap-3.5 min-[360px]:pr-12 transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted/70 [@media(hover:hover)]:hover:bg-muted/50"

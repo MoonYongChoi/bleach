@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { supabase } from "@/lib/supabase";
@@ -57,7 +58,12 @@ function seconds(from: string, to: string): string {
 export default function AdminPage() {
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 bg-card px-4 py-6 sm:px-6">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">수집 현황</h1>
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">수집 현황</h1>
+        <Link href="/admin/logs" className="text-sm text-primary hover:underline">
+          이용 기록 →
+        </Link>
+      </div>
       <p className="mt-1 text-xs text-muted-foreground">모든 시각은 한국 시간(KST)입니다.</p>
       <Suspense fallback={<p className="mt-8 text-sm text-muted-foreground">불러오는 중…</p>}>
         <AdminData />

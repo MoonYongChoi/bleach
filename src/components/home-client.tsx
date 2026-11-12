@@ -25,6 +25,8 @@ import {
 } from "@/lib/campaigns";
 import { useFavorites } from "@/lib/favorites";
 import { toQuery } from "@/lib/filter-state";
+import { track } from "@/lib/track";
+import { filterSummary } from "@/lib/filter-summary";
 import { SiteFooter } from "@/components/site-footer";
 
 /** 서버가 미리 그려 둔 기본 조건(마감임박순·조건 없음)의 첫 화면 데이터. 서버에서 못 가져오면 null이고 브라우저가 불러온다. */
@@ -68,6 +70,16 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   const favorites = useFavorites();
   // 관심 보기 중에만 관심 목록이 쿼리에 들어간다 — 그 외에는 별 누를 때마다 다시 불러올 필요 없음
   const favoriteIdsForQuery = filters.favoritesOnly ? favorites.ids : null;
+
+  // 필터·정렬을 바꿀 때마다 이용 기록 한 건 (처음 화면의 기본 조건은 세지 않는다)
+  const firstFilters = useRef(true);
+  useEffect(() => {
+    if (firstFilters.current) {
+      firstFilters.current = false;
+      return;
+    }
+    track("filter", { summary: filterSummary(filters) });
+  }, [filters]);
 
   useEffect(() => {
     if (initial) return; // 서버가 함께 보내 줌
@@ -172,7 +184,14 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col bg-card sm:shadow-[0_0_0_1px_var(--border)]">
       <div className="sticky top-0 z-10 bg-card/90 backdrop-blur-md">
-        <SiteHeader draft={searchDraft} onDraftChange={setSearchDraft} onSubmit={setSearch} />
+        <SiteHeader
+          draft={searchDraft}
+          onDraftChange={setSearchDraft}
+          onSubmit={(q) => {
+            setSearch(q);
+            if (q.trim()) track("search", { q: q.trim().slice(0, 60) });
+          }}
+        />
         <QuickFilters
           value={filters}
           favoriteCount={favorites.ids.length}

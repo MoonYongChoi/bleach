@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_KR, Bricolage_Grotesque } from "next/font/google";
 import { AdsenseScript } from "@/components/adsense-script";
+import { PageViewTracker } from "@/components/page-view-tracker";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -50,7 +51,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <AdsenseScript />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <PageViewTracker />
+      </body>
     </html>
   );
 }
