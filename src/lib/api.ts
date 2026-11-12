@@ -1,3 +1,4 @@
+import { supabase } from "@/lib/supabase";
 import {
   countCampaigns,
   encodeFilters,
@@ -30,4 +31,22 @@ export async function loadCampaignCount(filters: CampaignFilters): Promise<numbe
   if (filters.ids) return countCampaigns(filters);
   const q = encodeURIComponent(encodeFilters(filters));
   return (await getJson<{ total: number }>(`/api/campaigns/count?q=${q}`)).total;
+}
+
+/**
+ * 관심 목록 중 아직 모집 중인 id만. 마감·종료돼 목록에서 내려간 체험단을 관심 목록에서 정리할 때 쓴다.
+ * 실패하면 null — 그때는 아무것도 지우지 않는다.
+ */
+export async function loadActiveIds(ids: string[]): Promise<Set<string> | null> {
+  const active = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("campaigns")
+      .select("id")
+      .in("id", ids.slice(i, i + 200))
+      .eq("is_active", true);
+    if (error) return null;
+    for (const row of data ?? []) active.add(String(row.id));
+  }
+  return active;
 }

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { CoupangSlot } from "@/components/coupang-slot";
 import { EmptyState } from "@/components/empty-state";
 import { adAfter } from "@/lib/ads";
-import { loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
+import { loadActiveIds, loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
 import {
   DEFAULT_MAX_APPLY_RATE,
   PAGE_SIZE,
@@ -70,6 +70,23 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   const favorites = useFavorites();
   // 관심 보기 중에만 관심 목록이 쿼리에 들어간다 — 그 외에는 별 누를 때마다 다시 불러올 필요 없음
   const favoriteIdsForQuery = filters.favoritesOnly ? favorites.ids : null;
+
+  // 관심 체험단이 마감·종료돼 목록에서 내려가면 관심 목록에서도 뺀다 → 상단 [★ 관심 n]의 n이 실제로 볼 수 있는 수와 같게
+  const { ids: favoriteIds, prune: pruneFavorites } = favorites;
+  useEffect(() => {
+    if (favoriteIds.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const checked = [...favoriteIds];
+      loadActiveIds(checked).then((active) => {
+        if (!cancelled && active) pruneFavorites(checked, active);
+      });
+    }, 500); // 별을 연달아 누를 때는 마지막에 한 번만
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [favoriteIds, pruneFavorites]);
 
   // 필터·정렬을 바꿀 때마다 이용 기록 한 건 (처음 화면의 기본 조건은 세지 않는다)
   const firstFilters = useRef(true);

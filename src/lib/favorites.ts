@@ -56,5 +56,12 @@ export function useFavorites() {
     write(current.includes(id) ? current.filter((v) => v !== id) : [id, ...current]);
   }, []);
 
-  return { ids, isFavorite: (id: string) => ids.includes(id), toggle };
+  /** 확인한 id(checked) 중 모집 중(active)이 아닌 것을 관심 목록에서 뺀다 — 그사이 새로 누른 별은 건드리지 않는다 */
+  const prune = useCallback((checked: string[], active: Set<string>) => {
+    const gone = new Set(checked.filter((id) => !active.has(id)));
+    if (gone.size === 0) return;
+    write(read().filter((id) => !gone.has(id)));
+  }, []);
+
+  return { ids, isFavorite: (id: string) => ids.includes(id), toggle, prune };
 }
