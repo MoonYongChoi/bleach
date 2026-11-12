@@ -23,55 +23,74 @@ export interface Campaign {
   created_at: string;
 }
 
-/**
- * deadline: 마감일 가까운 순 / latest: 새로 올라온 순
- * competition: 지원률(신청÷모집) 낮은 순 — 붙을 확률이 높은 것부터 / recruit: 모집인원 많은 순
- */
+/** 정렬 기준. 각 기준은 방향(SortDir)을 따로 가진다 — 예) 마감: 임박(asc) / 여유(desc) */
 export type SortOption = "deadline" | "latest" | "competition" | "recruit";
+export type SortDir = "asc" | "desc";
+export type SortDirs = Record<SortOption, SortDir>;
 
-export const SORT_OPTIONS: { value: SortOption; label: string; hint: string }[] = [
-  { value: "deadline", label: "마감임박순", hint: "마감일이 가까운 체험단부터" },
-  { value: "competition", label: "경쟁 낮은순", hint: "모집인원 대비 신청자가 적은 순" },
-  { value: "recruit", label: "모집인원 많은순", hint: "한 번에 많이 뽑는 체험단부터" },
-  { value: "latest", label: "최신 등록순", hint: "BLEACH에 새로 올라온 순" },
+/** 기본 방향: 모두 "신청자에게 유리한 쪽 먼저" */
+export const DEFAULT_SORT_DIRS: SortDirs = {
+  deadline: "asc", // 마감 임박
+  competition: "asc", // 경쟁 낮은
+  recruit: "desc", // 모집인원 많은
+  latest: "desc", // 최신 등록
+};
+
+/** 정렬 시트에 나오는 순서와 이름. 첫 번째 방향이 기본값이다. */
+export const SORT_CRITERIA: { value: SortOption; title: string; dirs: { dir: SortDir; label: string }[] }[] = [
+  { value: "deadline", title: "마감", dirs: [{ dir: "asc", label: "임박" }, { dir: "desc", label: "여유" }] },
+  { value: "competition", title: "경쟁", dirs: [{ dir: "asc", label: "낮은" }, { dir: "desc", label: "높은" }] },
+  { value: "recruit", title: "모집인원", dirs: [{ dir: "desc", label: "많은" }, { dir: "asc", label: "적은" }] },
+  { value: "latest", title: "등록일", dirs: [{ dir: "desc", label: "최신" }, { dir: "asc", label: "오래된" }] },
 ];
 
+export function dirOf(dirs: Partial<SortDirs> | undefined, key: SortOption): SortDir {
+  return dirs?.[key] ?? DEFAULT_SORT_DIRS[key];
+}
+
+/** 정렬 버튼에 쓰는 이름 (예: "마감 임박순", "경쟁 높은순") */
+export function sortLabel(sort: SortOption, dirs?: Partial<SortDirs>): string {
+  const c = SORT_CRITERIA.find((x) => x.value === sort)!;
+  const d = c.dirs.find((x) => x.dir === dirOf(dirs, sort))!;
+  return `${c.title} ${d.label}순`;
+}
+
 /**
- * 정렬 규칙: 고른 정렬이 1순위, 같은 값끼리는 아래 보조 순서로 줄 세운다 (모두 "신청자에게 유리한 쪽 먼저").
- * 경쟁률 필터를 걸었으면 경쟁률이 보조 순서 맨 앞으로 온다. 지역·분류 같은 나머지 필터는 순서를 바꾸지 않는다.
- * 값이 없는 체험단(상시모집, 신청 현황 비공개 등)은 그 기준에서 맨 뒤.
+ * 정렬 규칙: 고른 기준이 1순위, 같은 값끼리는 아래 순서로 나머지 기준을 쓴다 (각 기준은 고른 방향대로).
+ * 경쟁률 필터를 걸었으면 경쟁률이 2순위로 온다. 지역·분류 같은 나머지 필터는 순서를 바꾸지 않는다.
+ * 값이 없는 체험단(상시모집, 신청 현황 비공개 등)은 방향과 상관없이 그 기준에서 맨 뒤.
  */
-type SortKey = "deadline" | "rate" | "recruit" | "latest";
-const SORT_CHAINS: Record<SortOption, SortKey[]> = {
-  deadline: ["deadline", "rate", "recruit", "latest"],
-  competition: ["rate", "deadline", "recruit", "latest"],
-  recruit: ["recruit", "rate", "deadline", "latest"],
-  latest: ["latest", "deadline", "rate"],
+const SORT_CHAINS: Record<SortOption, SortOption[]> = {
+  deadline: ["deadline", "competition", "recruit", "latest"],
+  competition: ["competition", "deadline", "recruit", "latest"],
+  recruit: ["recruit", "competition", "deadline", "latest"],
+  latest: ["latest", "deadline", "competition", "recruit"],
 };
+
+export function sortChain(sort: SortOption, hasRateFilter: boolean): SortOption[] {
+  const [primary, ...rest] = SORT_CHAINS[sort];
+  if (!hasRateFilter || primary === "competition") return [primary, ...rest];
+  return [primary, "competition", ...rest.filter((k) => k !== "competition")];
+}
+
 // 정렬 시트 안내 문장: "{1순위가 같으면} {2순위} 체험단부터 보여줘요"
-const SORT_KEY_SAME: Record<SortKey, string> = {
+const SORT_KEY_SAME: Record<SortOption, string> = {
   deadline: "마감일이 같으면",
-  rate: "경쟁률이 같으면",
+  competition: "경쟁률이 같으면",
   recruit: "모집인원이 같으면",
   latest: "같은 날 올라왔으면",
 };
-const SORT_KEY_FIRST: Record<SortKey, string> = {
-  deadline: "마감이 가까운",
-  rate: "경쟁이 낮은",
-  recruit: "많이 뽑는",
-  latest: "최근 올라온",
+const SORT_KEY_FIRST: Record<SortOption, Record<SortDir, string>> = {
+  deadline: { asc: "마감이 가까운", desc: "마감이 넉넉한" },
+  competition: { asc: "경쟁이 낮은", desc: "경쟁이 높은" },
+  recruit: { desc: "많이 뽑는", asc: "적게 뽑는" },
+  latest: { desc: "최근 올라온", asc: "먼저 올라온" },
 };
 
-export function sortChain(sort: SortOption, hasRateFilter: boolean): SortKey[] {
-  const [primary, ...rest] = SORT_CHAINS[sort];
-  if (!hasRateFilter || primary === "rate") return [primary, ...rest];
-  return [primary, "rate", ...rest.filter((k) => k !== "rate")];
-}
-
 /** 정렬 시트에 보여 줄 보조 순서 안내 (예: "마감일이 같으면 경쟁이 낮은 체험단부터 보여줘요") */
-export function tieBreakLabel(sort: SortOption, hasRateFilter: boolean): string {
+export function tieBreakLabel(sort: SortOption, hasRateFilter: boolean, dirs?: Partial<SortDirs>): string {
   const [primary, second] = sortChain(sort, hasRateFilter);
-  return `${SORT_KEY_SAME[primary]} ${SORT_KEY_FIRST[second]} 체험단부터 보여줘요`;
+  return `${SORT_KEY_SAME[primary]} ${SORT_KEY_FIRST[second][dirOf(dirs, second)]} 체험단부터 보여줘요`;
 }
 
 export interface ApplyRateRange {
@@ -95,6 +114,8 @@ export interface CampaignFilters {
   /** 지정하면 이 id들만 (관심 목록 보기) */
   ids?: string[];
   sort?: SortOption;
+  /** 기준별 방향 (없으면 DEFAULT_SORT_DIRS) */
+  sortDirs?: Partial<SortDirs>;
 }
 
 /** 체험단 플랫폼 — scraper/connectors/__init__.py REGISTRY의 label과 같은 순서로 맞춘다. */
@@ -181,11 +202,14 @@ export async function fetchCampaignPage(filters: CampaignFilters = {}, page = 0)
   if (filters.ids && filters.ids.length === 0) return [];
 
   let query = filteredQuery(filters, SELECT_COLUMNS);
+  const columns: Record<SortOption, string> = {
+    deadline: "deadline_date",
+    competition: "apply_rate",
+    recruit: "recruit_count",
+    latest: "created_at",
+  };
   for (const key of sortChain(filters.sort ?? "deadline", Boolean(filters.applyRate))) {
-    if (key === "deadline") query = query.order("deadline_date", { ascending: true, nullsFirst: false });
-    else if (key === "rate") query = query.order("apply_rate", { ascending: true, nullsFirst: false });
-    else if (key === "recruit") query = query.order("recruit_count", { ascending: false, nullsFirst: false });
-    else query = query.order("created_at", { ascending: false });
+    query = query.order(columns[key], { ascending: dirOf(filters.sortDirs, key) === "asc", nullsFirst: false });
   }
   // 마지막은 id — 같은 배치로 들어온 행은 created_at이 같아서 id로 순서를 고정해야
   // 페이지 경계에서 행이 겹치거나 빠지지 않는다
@@ -337,6 +361,11 @@ export function encodeFilters(filters: CampaignFilters): string {
   }
   if (filters.includeOpenEnded === false) out.open = 0;
   if (filters.sort) out.sort = filters.sort;
+  // 기본과 다른 방향만 싣는다 — 기본 정렬의 캐시 키가 예전과 같게
+  const dirs = SORT_VALUES.filter((k) => dirOf(filters.sortDirs, k) !== DEFAULT_SORT_DIRS[k]).map(
+    (k) => `${k}:${dirOf(filters.sortDirs, k)}`
+  );
+  if (dirs.length > 0) out.dirs = dirs;
   return JSON.stringify(out);
 }
 
@@ -363,5 +392,13 @@ export function parseFilters(raw: string | null): CampaignFilters | null {
   }
   if (data.open === 0) filters.includeOpenEnded = false;
   if (typeof data.sort === "string" && (SORT_VALUES as string[]).includes(data.sort)) filters.sort = data.sort as SortOption;
+  if (Array.isArray(data.dirs)) {
+    const dirs: Partial<SortDirs> = {};
+    for (const item of data.dirs.slice(0, 4)) {
+      const [key, dir] = typeof item === "string" ? item.split(":") : [];
+      if ((SORT_VALUES as string[]).includes(key) && (dir === "asc" || dir === "desc")) dirs[key as SortOption] = dir;
+    }
+    if (Object.keys(dirs).length > 0) filters.sortDirs = dirs;
+  }
   return filters;
 }

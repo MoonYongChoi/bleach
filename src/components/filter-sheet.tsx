@@ -35,7 +35,7 @@ export function activeFilterCount(f: FilterState) {
 
 /** 시트 안의 "초기화"는 정렬과 관심 보기는 건드리지 않는다 — 시트에서 고른 것만 지운다. */
 function clearSheetFilters(f: FilterState): FilterState {
-  return { ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded, favoritesOnly: f.favoritesOnly };
+  return { ...EMPTY_FILTER_STATE, sort: f.sort, sortDirs: f.sortDirs, includeOpenEnded: f.includeOpenEnded, favoritesOnly: f.favoritesOnly };
 }
 
 // 경쟁률(신청 ÷ 모집) 슬라이더: 0:1 ~ 모집 중 체험단의 최대 경쟁률(options.maxApplyRate).

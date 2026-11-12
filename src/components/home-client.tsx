@@ -164,7 +164,7 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   function resetFilters() {
     setSearchDraft("");
     setSearch("");
-    setFilters((f) => ({ ...EMPTY_FILTER_STATE, sort: f.sort, includeOpenEnded: f.includeOpenEnded }));
+    setFilters((f) => ({ ...EMPTY_FILTER_STATE, sort: f.sort, sortDirs: f.sortDirs, includeOpenEnded: f.includeOpenEnded }));
   }
 
   const noFavoritesYet = filters.favoritesOnly && favorites.ids.length === 0;
@@ -278,7 +278,8 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
         open={sortOpen}
         onOpenChange={setSortOpen}
         value={filters.sort}
-        onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
+        dirs={filters.sortDirs}
+        onChange={(sort, sortDirs) => setFilters((f) => ({ ...f, sort, sortDirs }))}
         includeOpenEnded={filters.includeOpenEnded}
         onToggleOpenEnded={() => setFilters((f) => ({ ...f, includeOpenEnded: !f.includeOpenEnded }))}
         hasRateFilter={filters.applyRate !== null}

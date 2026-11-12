@@ -3,7 +3,7 @@
 import { ArrowUpDownIcon, ChevronDownIcon, SlidersHorizontalIcon, StarIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { activeFilterCount, type FilterSection, type FilterState } from "@/components/filter-sheet";
-import { CAMPAIGN_TYPE_LABELS, REVIEW_CHANNEL_LABELS, SORT_OPTIONS } from "@/lib/campaigns";
+import { CAMPAIGN_TYPE_LABELS, REVIEW_CHANNEL_LABELS, sortLabel as makeSortLabel } from "@/lib/campaigns";
 
 function multiLabel(fallback: string, items: string[], format: (v: string) => string = (v) => v) {
   if (items.length === 0) return fallback;
@@ -94,7 +94,7 @@ export function ResultsBar({
   onToggleOpenEnded: () => void;
   onReset: () => void;
 }) {
-  const sortLabel = SORT_OPTIONS.find((o) => o.value === value.sort)?.label ?? "정렬";
+  const sortLabel = makeSortLabel(value.sort, value.sortDirs);
   const filtered = activeFilterCount(value) > 0 || value.favoritesOnly;
 
   return (
