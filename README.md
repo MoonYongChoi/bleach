@@ -35,30 +35,16 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
-## 광고 (Google AdSense)
+## 광고 (쿠팡 파트너스)
 
-코드는 `src/lib/ads.ts`, `src/components/ad-slot.tsx`, `src/components/adsense-script.tsx`.
+코드는 `src/lib/ads.ts`, `src/components/coupang-slot.tsx`. 캠페인 8개마다 쿠팡 파트너스 다이나믹 배너(320×100) 한 칸을
+넣고, 무한 스크롤로 내리는 동안 계속 넣는다. 각 칸에는 "광고" 표시와 수수료 고지 문구가 붙는다.
 
-| 상태 | 조건 | 나오는 것 |
-|---|---|---|
-| 연결 | 게시자 ID(기본값 `ca-pub-2018630083097143`)가 올바름 | `<head>`의 AdSense 코드 |
-| 목록 광고 | 위 + 광고 단위 ID(기본값 피드 내 광고 `1293649683`, layout key `-fi+6j-17-cv+rc`) | 캠페인 8개마다 광고 한 칸, 최대 6칸 |
-
-광고 단위 ID가 없으면 목록에는 광고 칸이 생기지 않는다. 켜는 순서:
-
-1. AdSense에서 사이트 연결·소유 확인 (확인 방법은 "애드센스 코드 스니펫". `<head>` 코드는 이미 나온다). `/ads.txt`는 넣지 않았다. AdSense가 요구하면 `google.com, pub-2018630083097143, DIRECT, f08c47fec0942fa0` 한 줄짜리 경로를 다시 만든다.
-2. AdSense → 광고 → 광고 단위 → **피드 내 광고**를 만들고, 광고 단위 ID(숫자)를 Vercel 환경변수 `NEXT_PUBLIC_ADSENSE_SLOT`에 넣고 다시 배포한다. 피드형의 layout key가 있으면 `NEXT_PUBLIC_ADSENSE_LAYOUT_KEY`에도 넣는다.
-3. AdSense의 "자동 광고"를 켜 두면 코드가 넣은 칸과 별개로 광고가 추가로 붙는다. 목록 UX를 직접 관리하려면 자동 광고는 끈다.
-
-켜기 전에 확인할 것:
-
-- **호스팅 약관**: Vercel Hobby(무료)는 비상업적 사용만 허용한다. 광고 수익을 쓰려면 Pro 등 상업적 사용이 가능한 플랜이 필요하다.
-- **도메인**: 본인 소유 도메인이 있어야 AdSense 승인이 쉽다.
-- **개인정보처리방침**: 광고 쿠키 사용을 알리는 페이지가 필요하다. 아직 없다.
-- **콘텐츠 정책**: 다른 사이트의 정보를 모아 보여 주는 서비스는 "가치가 낮은 콘텐츠"로 거절될 수 있다.
+- 배너 코드는 iframe(srcdoc) 안에서 그대로 돌린다 — 쿠팡 스크립트가 우리 페이지 문서를 건드리지 않게.
+- `NEXT_PUBLIC_COUPANG_ID=off`로 끈다. 배너를 바꾸면 `NEXT_PUBLIC_COUPANG_ID` / `NEXT_PUBLIC_COUPANG_TRACKING`.
+- **호스팅 약관**: Vercel Hobby(무료)는 비상업적 사용만 허용한다. 제휴 수수료도 상업적 이용이라 Pro 플랜이 필요하다.
 - **수집 대상 사이트의 약관·robots**: 수익이 생기면 법적 위험이 달라진다.
-
-광고는 캠페인이 있는 목록 안에만 들어가고, 로딩·오류·결과 없음 화면에는 넣지 않는다 (AdSense 정책).
+- 구글 애드센스는 2026-11-12에 뺐다 (git 기록에 남아 있음).
 
 ## 관리 페이지 (/admin)
 

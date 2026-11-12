@@ -23,8 +23,7 @@ const SRC_DOC = `<!doctype html><html><head><meta charset="utf-8"><style>html,bo
 export function CoupangSlot() {
   if (!coupangEnabled) return null;
   return (
-    <li aria-label="광고" className="list-none bg-muted/40 px-4 py-4">
-      <p className="mb-2 text-[11px] font-medium text-muted-foreground">광고</p>
+    <li aria-label="광고" className="list-none bg-muted/40 px-4 py-1.5">
       <div className="flex justify-center">
         <iframe
           title="쿠팡 파트너스 광고"
@@ -36,8 +35,9 @@ export function CoupangSlot() {
           className="block max-w-full border-0"
         />
       </div>
-      <p className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
-        이 배너는 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
+      {/* "광고" 표시 + 수수료 고지(공정위 추천·보증 지침)를 한 줄로 — 카드 한 장 높이에 가깝게 */}
+      <p className="mt-1 truncate text-center text-[10.5px] leading-tight text-muted-foreground">
+        <b className="font-semibold">광고</b> · 쿠팡 파트너스 활동으로 일정액의 수수료를 제공받습니다
       </p>
     </li>
   );

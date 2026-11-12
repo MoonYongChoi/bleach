@@ -45,23 +45,9 @@ export default function PrivacyPage() {
       <section>
         <h2>2. 광고와 쿠키</h2>
         <p>
-          서비스는 Google 애드센스 광고를 게재합니다. Google을 비롯한 제3자 광고 업체는 쿠키를 사용해 이용자가 이 서비스와 다른
-          웹사이트를 방문한 기록을 바탕으로 광고를 보여 줄 수 있습니다. Google이 광고 쿠키를 사용하는 방식은{" "}
-          <a href="https://policies.google.com/technologies/ads?hl=ko" target="_blank" rel="noopener noreferrer">
-            Google 광고 정책
-          </a>
-          에서 확인할 수 있습니다.
-        </p>
-        <p className="mt-2">
-          맞춤 광고를 원하지 않으면{" "}
-          <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">
-            Google 광고 설정
-          </a>
-          에서 끌 수 있고, 브라우저 설정에서 쿠키를 차단할 수도 있습니다.
-        </p>
-        <p>
-          목록 중간에는 쿠팡 파트너스 배너도 게재합니다. 배너를 눌러 쿠팡에서 구매하면 서비스가 쿠팡으로부터 일정액의
-          수수료를 받을 수 있으며, 배너를 누른 기록을 확인하기 위해 쿠팡이 쿠키를 사용할 수 있습니다.
+          목록 중간에 쿠팡 파트너스 배너를 게재합니다. 배너를 눌러 쿠팡에서 구매하면 서비스가 쿠팡으로부터 일정액의
+          수수료를 받을 수 있으며, 배너를 누른 기록을 확인하기 위해 쿠팡이 쿠키를 사용할 수 있습니다. 쿠키는 브라우저
+          설정에서 차단할 수 있습니다.
         </p>
       </section>
 
@@ -71,7 +57,7 @@ export default function PrivacyPage() {
           <li>Supabase: 데이터베이스 (사이트 추가 요청 내용 저장)</li>
           <li>Vercel: 웹사이트 호스팅</li>
           <li>Resend: 사이트 추가 요청이 들어왔을 때 운영자에게 알림 메일 발송</li>
-          <li>Google: 광고 게재</li>
+          <li>쿠팡: 쿠팡 파트너스 배너 게재</li>
         </ul>
         <p className="mt-2">이 업체들은 해외에 서버를 두고 있을 수 있습니다.</p>
       </section>
