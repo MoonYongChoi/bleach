@@ -229,19 +229,31 @@ def _fetch_pages(page, rows: list[dict], pages: dict) -> None:
                 print(f"[페이지 열기 실패] {row['source_url']} -> {type(last_error).__name__}: {str(last_error)[:100]}")
 
 
-def _image_probe(url: str) -> tuple[str, str | None, int]:
-    """(상태, 앞 16KB의 해시, 받은 바이트). 같은 해시가 여러 캠페인에 나오면 "이미지 없음" 대체 그림일 가능성이 높다."""
+def _image_probe(url: str) -> tuple[str, str | None, int, int]:
+    """(상태, 앞 16KB의 해시, 전체 바이트, 걸린 ms). 같은 해시가 여러 캠페인에 나오면 "이미지 없음" 대체 그림일 가능성이 높다.
+
+    사이트의 <img>는 referrerPolicy="no-referrer"라 Referer 없이 요청한다 — 여기서도 똑같이.
+    """
     import hashlib
 
-    headers = {"User-Agent": BROWSER_UA, "Referer": "https://bleach-zeta-beryl.vercel.app/"}
+    headers = {"User-Agent": BROWSER_UA, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"}
+    started = time.monotonic()
     try:
         resp = requests.get(url, headers=headers, timeout=15, stream=True)
         ctype = resp.headers.get("content-type", "-").split(";")[0]
-        chunk = next(resp.iter_content(16384), b"")
+        first = b""
+        total = 0
+        for chunk in resp.iter_content(65536):
+            if not first:
+                first = chunk[:16384]
+            total += len(chunk)
+            if total > 5_000_000:
+                break
         resp.close()
-        return f"{resp.status_code} {ctype}", hashlib.sha1(chunk).hexdigest()[:10], len(chunk)
+        ms = int((time.monotonic() - started) * 1000)
+        return f"{resp.status_code} {ctype}", hashlib.sha1(first).hexdigest()[:10], total, ms
     except requests.RequestException as e:
-        return f"오류 {type(e).__name__}", None, 0
+        return f"오류 {type(e).__name__}", None, 0, int((time.monotonic() - started) * 1000)
 
 
 def audit_images(rows: list[dict]) -> None:
@@ -252,13 +264,18 @@ def audit_images(rows: list[dict]) -> None:
     stats: dict[str, Counter] = defaultdict(Counter)
     hashes: dict[tuple[str, str], list[dict]] = defaultdict(list)
     bad: list[str] = []
+    sizes: dict[str, list[int]] = defaultdict(list)
+    times: dict[str, list[int]] = defaultdict(list)
     for row in rows:
         url = row.get("image_url")
         if not url:
             stats[row["platform"]]["이미지 주소 없음"] += 1
             continue
-        status, digest, size = _image_probe(url)
+        status, digest, size, ms = _image_probe(url)
         ok = status.startswith("200 image/")
+        if ok:
+            sizes[row["platform"]].append(size)
+            times[row["platform"]].append(ms)
         stale = row["last_seen_at"] < stale_before
         stats[row["platform"]][("열림" if ok else "안 열림") + (" · 목록에서 안 보임" if stale else " · 최근 수집")] += 1
         if digest:
@@ -270,6 +287,16 @@ def audit_images(rows: list[dict]) -> None:
     print("## 썸네일 점검\n")
     for platform, counter in sorted(stats.items()):
         print(f"- {platform}: " + ", ".join(f"{k} {v}" for k, v in sorted(counter.items())))
+
+    def pct(values: list[int], q: float) -> int:
+        values = sorted(values)
+        return values[min(len(values) - 1, int(len(values) * q))] if values else 0
+
+    print("\n### 열린 이미지 크기·시간 (카드 썸네일은 72px로 보인다)")
+    for platform in sorted(sizes):
+        s_, t_ = sizes[platform], times[platform]
+        print(f"- {platform}: 크기 중간 {pct(s_, .5) // 1024}KB / 상위10% {pct(s_, .9) // 1024}KB, "
+              f"시간 중간 {pct(t_, .5)}ms / 상위10% {pct(t_, .9)}ms")
     repeated = [(k, v) for k, v in hashes.items() if len(v) >= 3]
     print("\n### 같은 그림이 3개 이상 캠페인에 쓰인 경우 (대체 그림 의심)")
     for (platform, digest), items in sorted(repeated, key=lambda x: -len(x[1]))[:8]:
