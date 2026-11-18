@@ -76,6 +76,25 @@ def to_raw(card: dict) -> RawCampaign | None:
     )
 
 
+def _download_thumbnails(context, urls: list) -> dict[str, tuple[str, bytes]]:
+    """봇 확인을 통과한 브라우저 세션(쿠키)으로 썸네일을 받는다. 이미지가 아니면(HTML 등) 버린다."""
+    from urllib.parse import urljoin
+
+    got: dict[str, tuple[str, bytes]] = {}
+    for url in dict.fromkeys(u for u in urls if u):
+        url = urljoin(BASE_URL, url)
+        try:
+            resp = context.request.get(url, timeout=15000)
+            ctype = (resp.headers.get("content-type") or "").split(";")[0]
+            body = resp.body()
+            if resp.ok and ctype.startswith("image/") and 0 < len(body) <= 1_500_000:
+                got[url] = (ctype, body)
+        except Exception:  # noqa: BLE001 - 한 장 실패는 그 카드만 기본 썸네일
+            continue
+    print(f"[모두블로그] 썸네일 {len(got)}장 받음")
+    return got
+
+
 class ModublogConnector(Connector):
     key = "modublog"
     label = "모두블로그"
@@ -84,6 +103,9 @@ class ModublogConnector(Connector):
 
     def __init__(self, scrolls: int = 12):
         self.scrolls = scrolls
+        # 수집 때 받아 둔 썸네일 {원래 주소: (content-type, bytes)} — run_all이 loader.save_thumbs로 DB에 넣는다.
+        # 모두블로그 이미지는 봇 확인 쿠키가 없는 요청(=우리 사이트 방문자의 브라우저)에 HTML을 줘서 직접 못 보여 준다.
+        self.thumbnails: dict[str, tuple[str, bytes]] = {}
 
     def prepare_browser(self, context) -> None:
         # 봇 확인 쿠키를 먼저 받아둔다
@@ -111,6 +133,7 @@ class ModublogConnector(Connector):
                     self.complete = True
                     break
             cards = page.eval_on_selector_all("div.c_box", CARD_JS)
+            self.thumbnails = _download_thumbnails(context, [c.get("image") for c in cards])
             browser.close()
 
         unparsed = [

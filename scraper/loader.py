@@ -165,3 +165,49 @@ if __name__ == "__main__":
     ]
     n, expired = upsert_campaigns(sample)
     print(f"upsert {n}건 완료, 비활성화 {expired}건")
+
+
+THUMB_SCHEMA_SQL = """
+create table if not exists public.thumb_cache (
+  url text primary key,
+  content_type text not null,
+  bytes bytea not null,
+  fetched_at timestamptz not null default now()
+);
+alter table public.thumb_cache enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename = 'thumb_cache' and policyname = 'thumb_cache is readable') then
+    create policy "thumb_cache is readable" on public.thumb_cache for select using (true);
+  end if;
+end $$;
+grant select on public.thumb_cache to anon, authenticated;
+"""
+
+THUMB_UPSERT_SQL = """
+insert into public.thumb_cache (url, content_type, bytes, fetched_at) values (%s, %s, %s, now())
+on conflict (url) do update set content_type = excluded.content_type, bytes = excluded.bytes, fetched_at = now()
+"""
+
+# 모집 중 캠페인이 더 이상 쓰지 않고 2주 지난 썸네일은 지운다
+THUMB_PRUNE_SQL = """
+delete from public.thumb_cache t
+where t.fetched_at < now() - interval '14 days'
+  and not exists (select 1 from public.campaigns c where c.is_active and c.image_url = t.url)
+"""
+
+
+def save_thumbs(thumbs: dict[str, tuple[str, bytes]]) -> int:
+    """수집기가 받아 둔 썸네일을 thumb_cache에 넣는다 (사이트의 /api/thumb가 꺼내 보여 준다)."""
+    if not thumbs:
+        return 0
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(THUMB_SCHEMA_SQL)
+            psycopg2.extras.execute_batch(
+                cur, THUMB_UPSERT_SQL, [(u, t, psycopg2.Binary(b)) for u, (t, b) in thumbs.items()], page_size=50
+            )
+            cur.execute(THUMB_PRUNE_SQL)
+        return len(thumbs)
+    finally:
+        conn.close()

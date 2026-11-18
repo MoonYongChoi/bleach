@@ -77,6 +77,16 @@ def main() -> None:
     n, expired = upsert_campaigns(records, [{**e, "run_id": run_id} for e in run_log])
     print(f"총 {len(raw_campaigns)}건 수집 → {n}건 upsert, 마감 지난 {expired}건 비활성화")
 
+    from loader import save_thumbs
+
+    for connector in connectors:
+        thumbs = getattr(connector, "thumbnails", None)
+        if thumbs:
+            try:
+                print(f"[{connector.label}] 썸네일 {save_thumbs(thumbs)}장 저장")
+            except Exception as e:  # noqa: BLE001 - 썸네일 저장 실패가 수집 결과를 막지 않게
+                print(f"[{connector.label}] 썸네일 저장 실패: {e}")
+
 
 if __name__ == "__main__":
     main()

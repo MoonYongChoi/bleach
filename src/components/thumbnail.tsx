@@ -49,7 +49,23 @@ export function DefaultThumbnail({ category }: { category: string | null }) {
   );
 }
 
-/** 카드 썸네일. 이미지가 없거나 불러오지 못하면 DefaultThumbnail로 바꾼다. 불러오는 동안은 옅은 면으로 자리를 잡고, 다 받으면 서서히 나타난다. */
+// 방문자 브라우저가 원본을 직접 못 받는 사이트 — 수집기가 받아 둔 사본(/api/thumb)으로 보여 준다.
+// 모두블로그: 봇 확인 쿠키가 없는 이미지 요청에 HTML을 준다 (2026-11-18 점검: 40장 중 40장).
+const PROXIED_HOSTS = new Set(["www.modublog.co.kr", "modublog.co.kr"]);
+
+function displaySrc(src: string): string {
+  try {
+    return PROXIED_HOSTS.has(new URL(src).host) ? `/api/thumb?u=${encodeURIComponent(src)}` : src;
+  } catch {
+    return src;
+  }
+}
+
+/**
+ * 카드 썸네일. 불러오는 동안에는 카테고리 아이콘(기본 썸네일)을 먼저 보여 주고, 이미지를 다 받으면 그 위로 서서히 나타난다.
+ * 이미지가 없거나 불러오지 못하면 기본 썸네일 그대로.
+ * (원본 서버가 느린 사이트는 한 장에 1초 넘게 걸려, 빈 회색 칸이 "썸네일이 안 나온다"로 보였다)
+ */
 export function Thumbnail({ src, category }: { src: string | null; category: string | null }) {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -68,19 +84,28 @@ export function Thumbnail({ src, category }: { src: string | null; category: str
     return <DefaultThumbnail category={category} />;
   }
   return (
-    <div className={cn(FRAME, "overflow-hidden bg-muted")}>
+    <div className={cn(FRAME, "relative overflow-hidden")}>
+      {!loaded && (
+        <div className="absolute inset-0">
+          <DefaultThumbnail category={category} />
+        </div>
+      )}
       {/* eslint-disable-next-line @next/next/no-img-element -- external, per-domain CDN hosts; not worth next.config allowlisting yet */}
       <img
         ref={imgRef}
-        src={src}
+        src={displaySrc(src)}
         alt=""
         loading="lazy"
+        decoding="async"
         // 일부 사이트는 다른 사이트에서 불러오는 이미지를 Referer로 걸러낸다 — 출처를 보내지 않으면 걸리지 않는다
         referrerPolicy="no-referrer"
         onLoad={() => setLoaded(true)}
         // 404/403뿐 아니라 이미지가 아닌 응답(봇 확인 HTML 등)도 브라우저가 error로 알려준다
         onError={() => setFailed(true)}
-        className={cn("size-full object-cover transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0")}
+        className={cn(
+          "relative size-full object-cover transition-opacity duration-300",
+          loaded ? "opacity-100" : "opacity-0"
+        )}
       />
     </div>
   );
