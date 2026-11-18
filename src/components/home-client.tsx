@@ -14,6 +14,7 @@ import { PlatformRequestSheet } from "@/components/platform-request-sheet";
 import { CampaignCard, CampaignCardSkeleton } from "@/components/campaign-card";
 import { Button } from "@/components/ui/button";
 import { CoupangSlot } from "@/components/coupang-slot";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 import { EmptyState } from "@/components/empty-state";
 import { adAfter } from "@/lib/ads";
 import { loadActiveIds, loadCampaignCount, loadCampaignPage, loadFilterOptions } from "@/lib/api";
@@ -65,6 +66,8 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   // 불러오기에 실패했을 때 "결과 없음"과 구분해서 보여주고, 다시 시도할 수 있게 한다
   const [loadError, setLoadError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  // 당겨서 새로고침: 지금 검색·필터·정렬 그대로 첫 묶음부터 다시 불러온다
+  const refreshList = useCallback(() => setRetryKey((k) => k + 1), []);
   // 첫 화면에서 목록이 순서대로 올라오는 등장 효과는 맨 처음 한 번만 — 필터를 바꿀 때마다 반복되면 거슬린다
   const [intro, setIntro] = useState(true);
   const favorites = useFavorites();
@@ -201,6 +204,10 @@ export function HomeClient({ initial }: { initial: InitialData | null }) {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col bg-card sm:shadow-[0_0_0_1px_var(--border)]">
       <div className="sticky top-0 z-10 bg-card/90 backdrop-blur-md">
+        <PullToRefresh
+          refreshing={loading}
+          onRefresh={refreshList}
+        />
         <SiteHeader
           draft={searchDraft}
           onDraftChange={setSearchDraft}

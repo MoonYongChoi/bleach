@@ -136,6 +136,8 @@
   }
   html {
     @apply font-sans;
+    /* 브라우저 기본 "당겨서 새로고침"(페이지를 다시 열어 조건이 초기화됨)을 끄고 PullToRefresh가 맡는다 */
+    overscroll-behavior-y: contain;
   }
 }
 
