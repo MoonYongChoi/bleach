@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -414,6 +414,15 @@ function RegionPicker({
 }) {
   const firstSelected = selectedSidos[0] ?? selectedGuguns[0]?.split(" ")[0] ?? null;
   const [expanded, setExpanded] = useState<string | null>(firstSelected);
+  // 시/도를 눌러 하위 지역 상자가 열리면 그 상자가 보이게 시트를 내린다 — 아래에 생겨서 못 보고 지나치기 쉬웠다.
+  // (시트를 처음 열 때 이미 펼쳐져 있는 경우는 움직이지 않는다)
+  const subRef = useRef<HTMLDivElement>(null);
+  const userExpanded = useRef(false);
+  useEffect(() => {
+    if (!userExpanded.current || !expanded) return;
+    const t = setTimeout(() => subRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 30);
+    return () => clearTimeout(t);
+  }, [expanded]);
 
   const pickedIn = (sido: string) => selectedGuguns.filter((k) => k.startsWith(`${sido} `)).length;
   const subOptions = expanded ? guguns[expanded] ?? [] : [];
@@ -446,7 +455,11 @@ function RegionPicker({
             <Chip
               key={sido}
               active={whole || picked > 0}
-              onClick={() => (hasSub ? setExpanded(expanded === sido ? null : sido) : toggleWhole(sido))}
+              onClick={() => {
+                if (!hasSub) return toggleWhole(sido);
+                userExpanded.current = true;
+                setExpanded(expanded === sido ? null : sido);
+              }}
             >
               {sido}
               {picked > 0 && <span className="ml-1 tabular-nums">{picked}</span>}
@@ -457,7 +470,7 @@ function RegionPicker({
       </ChipGroup>
 
       {expanded && subOptions.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3">
+        <div ref={subRef} className="flex scroll-mb-4 flex-col gap-2 rounded-xl bg-muted/60 p-3">
           <p className="text-xs font-medium text-muted-foreground">{expanded} 하위 지역</p>
           <div className="flex flex-wrap gap-1.5">
             <Chip small active={wholeSelected} onClick={() => toggleWhole(expanded)}>
