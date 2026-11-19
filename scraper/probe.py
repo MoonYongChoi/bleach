@@ -310,7 +310,8 @@ def probe_fetch_in_page(page_url: str, paths: list[str]) -> None:
                 print(f"  {path}: {res['s']} objects={len(objs)} has_more={body.get('has_more')} page={body.get('page')} "
                       f"keys={list(body)[:8]} city={dict(cities.most_common(5))}")
             else:
-                print(f"  {path}: {res['s']} {json.dumps(body, ensure_ascii=False)[:600]}")
+                limit = int(os.environ.get("PROBE_JSON_CHARS", "3000"))
+                print(f"  {path}: {res['s']} {json.dumps(body, ensure_ascii=False)[:limit]}")
         browser.close()
 
 
