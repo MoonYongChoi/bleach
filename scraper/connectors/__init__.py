@@ -9,6 +9,7 @@ from connectors.pavlovu import PavlovuConnector
 from connectors.reviewnote import ReviewnoteConnector
 from connectors.revu import RevuConnector
 from connectors.seoulouba import SeouloubaConnector
+from connectors.weu import WeuConnector
 
 REGISTRY: list[Connector] = [
     PavlovuConnector(),
@@ -17,6 +18,7 @@ REGISTRY: list[Connector] = [
     SeouloubaConnector(),
     DinnerqueenConnector(),
     ModublogConnector(),
+    WeuConnector(),
 ]
 
 BY_KEY: dict[str, Connector] = {c.key: c for c in REGISTRY}

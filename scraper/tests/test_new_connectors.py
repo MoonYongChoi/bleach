@@ -244,5 +244,29 @@ class RevuApiTest(unittest.TestCase):
         self.assertIsNone(api_item_to_raw({**self.ITEM, "requestEndedOn": "2026-10-01"}, "지역", today=TODAY))
 
 
+class WeuTest(unittest.TestCase):
+    def test_item_to_raw(self):
+        from datetime import date
+
+        from connectors.weu import item_to_raw, parse_end_date
+
+        assert parse_end_date("25/11/2026-23:59:59") == date(2026, 11, 25)
+        item = {
+            "id": 19569, "type": "winner", "campaign_title": "[경기 화성] 광주수산",
+            "winner_campaign_reward": "20만원 식사권\n<br>(2인기준)", "thumbnail": "/campaign/images/a.webp",
+            "registration_end_date": "25/11/2026-23:59:59", "type_blog_review": ["blog"], "campaign_type": "방문형",
+            "max_selected": 8, "number_of_register": 3, "address": "경기 화성시 서신면", "ctg_name": "맛집",
+        }
+        raw = item_to_raw(item, "https://img.weu.kr", date(2026, 11, 19))
+        assert raw.source_url == "https://weu.kr/detailPage/19569?type=winner"
+        assert raw.title == "광주수산"
+        assert raw.description == "20만원 식사권 (2인기준)"
+        assert raw.image_url == "https://img.weu.kr/campaign/images/a.webp"
+        assert raw.region_raw == "경기 화성시"
+        assert (raw.recruit_count, raw.applicant_count) == (8, 3)
+        # 마감이 지난 항목은 버린다
+        assert item_to_raw(item, None, date(2026, 11, 26)) is None
+
+
 if __name__ == "__main__":
     unittest.main()

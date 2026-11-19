@@ -49,7 +49,7 @@
 - [x] 캠페인 유형(방문/배송/구매/기자단/재택) + 리뷰 채널(`review_channels`: 블로그/인스타/릴스/유튜브/쇼츠/틱톡/클립) 수집·정제
   - [ ] 실제 페이지로 채널 셀렉터 확인 (파블로 `.pvc_pl i`, 레뷰 카드 아이콘 alt, 리뷰노트 `channel` 값 종류)
 - [ ] `platforms` 테이블 + `campaigns.platform`을 키(revu 등)로 전환, 프론트 PLATFORMS 상수 제거
-- [x] 신규 커넥터: 디너의여왕, 모두블로그
+- [x] 신규 커넥터: 디너의여왕, 모두블로그, 위유(목록 API만 사용 — 상세 페이지는 robots·ai.txt가 막아 열지 않음)
 - [x] 서울오빠: 데이터센터 IP 차단(GitHub·Vercel 서울 리전 모두 시간초과) → 가정용 PC에서 `--only seoulouba`로 수집 (README "서울오빠 수집")
 - [ ] 보류: 강남맛집 — GitHub(해외) 서버에서 접속이 막힘
 - [ ] `scrape_runs` 수집 기록 테이블 + Actions를 커넥터별 matrix로 분리
