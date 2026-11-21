@@ -61,7 +61,8 @@ export function CampaignCard({
   /** 처음 한 번만 순서대로 올라오게 할지 */
   intro: boolean;
 }) {
-  const typeLabel = campaign.campaign_type ? CAMPAIGN_TYPE_LABELS[campaign.campaign_type]?.label : undefined;
+  const typeInfo = campaign.campaign_type ? CAMPAIGN_TYPE_LABELS[campaign.campaign_type] : undefined;
+  const typeLabel = typeInfo?.short ?? typeInfo?.label;
   const region = [campaign.region_sido, campaign.region_gugun].filter(Boolean).join(" ");
   const channels = campaign.review_channels.map((c) => REVIEW_CHANNEL_LABELS[c] ?? c);
   const deadline = campaign.deadline_date ? `${campaign.deadline_date.slice(5).replace("-", ".")}까지` : null;
