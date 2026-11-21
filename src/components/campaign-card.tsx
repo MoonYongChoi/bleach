@@ -95,7 +95,7 @@ export function CampaignCard({
             {typeLabel && (
               <span className="shrink-0 whitespace-nowrap rounded bg-muted px-1.5 py-px text-[11px] font-medium">{typeLabel}</span>
             )}
-            {channels.length > 0 && <span className="text-primary">{channels.join("·")} 리뷰</span>}
+            {channels.length > 0 && <span className="text-primary">{channels.join("·")}</span>}
           </p>
           <p className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-foreground">
             {campaign.vendor ? <span className="font-medium text-foreground/60">{campaign.vendor} </span> : null}
