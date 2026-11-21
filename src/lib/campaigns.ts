@@ -125,8 +125,8 @@ export const PLATFORMS = ["레뷰", "파블로", "리뷰노트", "서울오빠",
 /** short = 목록 카드에 붙는 짧은 표시 (없으면 label) */
 export const CAMPAIGN_TYPE_LABELS: Record<string, { label: string; hint: string; short?: string }> = {
   방문: { label: "방문 체험", hint: "매장에 가서 체험", short: "방문" },
-  배송: { label: "제품 제공", hint: "집으로 받아서 사용" },
-  구매: { label: "구매 후 환급", hint: "직접 사고 돌려받기" },
+  배송: { label: "제품 제공", hint: "집으로 받아서 사용", short: "제품" },
+  구매: { label: "구매 후 환급", hint: "직접 사고 돌려받기", short: "환급" },
   기자단: { label: "기자단", hint: "체험 없이 원고만" },
 };
 
