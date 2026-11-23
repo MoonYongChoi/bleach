@@ -221,14 +221,14 @@ export function FilterSheet({
                   key={type}
                   active={draft.types.includes(type)}
                   onClick={() => toggle("types", type)}
-                  label={CAMPAIGN_TYPE_LABELS[type]?.label ?? type}
+                  label={CAMPAIGN_TYPE_LABELS[type]?.short ?? CAMPAIGN_TYPE_LABELS[type]?.label ?? type}
                   hint={CAMPAIGN_TYPE_LABELS[type]?.hint}
                 />
               ))}
             </div>
           </Section>
 
-          <Section {...sectionProps("region")} hint="방문 체험만 해당">
+          <Section {...sectionProps("region")} hint="방문만 해당">
             <RegionPicker
               sidos={options.sidos}
               guguns={options.guguns}
