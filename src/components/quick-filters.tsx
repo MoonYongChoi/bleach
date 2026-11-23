@@ -51,7 +51,7 @@ export function QuickFilters({
       </Chip>
       <span className="h-5 w-px shrink-0 bg-border" aria-hidden />
       <Chip active={value.types.length > 0} onClick={() => onOpenSection("type")}>
-        {multiLabel("체험 방식", value.types, (t) => CAMPAIGN_TYPE_LABELS[t]?.label ?? t)}
+        {multiLabel("체험 방식", value.types, (t) => CAMPAIGN_TYPE_LABELS[t]?.short ?? CAMPAIGN_TYPE_LABELS[t]?.label ?? t)}
         <ChevronDownIcon className="size-3.5" />
       </Chip>
       <Chip active={value.sidos.length + value.guguns.length > 0} onClick={() => onOpenSection("region")}>
