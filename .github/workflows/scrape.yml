@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       reviewnote_full:
-        description: "리뷰노트를 지역별로 전체 수집 (평소엔 매일 03:17 회차만, 오래 걸림)"
+        description: "리뷰노트를 지역별로 전체 수집 (평소엔 마지막 전체 수집 후 20시간 지난 첫 회차, 오래 걸림)"
         type: boolean
         default: false
 
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    # 매일 03:17 회차는 리뷰노트 지역별 전체 수집(요청 1,000번+, 천천히)이 더해져 길다
+    # 하루 한 번(마지막 전체 수집 후 20시간 지난 회차)은 리뷰노트 지역별 전체 수집(요청 1,000번+, 천천히)이 더해져 길다
     timeout-minutes: 90
     defaults:
       run:

@@ -37,6 +37,8 @@ def run(connector: Connector, log: list[dict] | None = None) -> list:
             entry["fetched"] = len(items)
             # 목록을 끝까지 읽은 회차만, 목록에서 사라진 캠페인을 모집 종료로 내릴 수 있다
             entry["complete"] = bool(getattr(connector, "complete", False))
+            # 사이트가 "마감"으로 보여 준 캠페인 {source_url: 마감 시각} — 끝까지 못 읽은 회차에도 내린다
+            entry["closed_listed"] = dict(getattr(connector, "closed_listed", None) or {})
             result = [(connector, item) for item in items]
         except Exception as e:  # noqa: BLE001 - 한 플랫폼 실패가 전체를 막으면 안 됨
             print(f"[{connector.label}] 실패: {e}")

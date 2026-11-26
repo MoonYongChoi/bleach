@@ -87,6 +87,29 @@ CLOSE_UNSEEN_SQL = """
 update public.campaigns set is_active = false
 where platform = %s and is_active and last_seen_at < now()
 """
+# 사이트 목록에 "마감"으로 나온 캠페인: 모집 중으로 남아 있으면 내리고, 앞당겨진 실제 마감일로 고친다.
+# 새로 넣지는 않는다 (이미 끝난 캠페인을 목록에 들일 이유가 없다).
+CLOSE_LISTED_SQL = """
+update public.campaigns c
+set is_active = false,
+    deadline_date = (v.ended_at::timestamptz at time zone 'Asia/Seoul')::date,
+    updated_at = now()
+from (values %s) as v(source_url, ended_at)
+where c.source_url = v.source_url and c.is_active
+"""
+
+
+def close_listed(cur, platform: str, listed: dict[str, str]) -> int:
+    if not listed:
+        return 0
+    # 한 문장으로 보낸다 — 여러 묶음으로 나누면 rowcount가 마지막 묶음 것만 남는다
+    psycopg2.extras.execute_values(cur, CLOSE_LISTED_SQL, list(listed.items()), page_size=len(listed))
+    n = cur.rowcount
+    if n:
+        print(f"[{platform}] 사이트에 마감으로 나온 캠페인 {n}건 모집 종료 처리")
+    return n
+
+
 # 한 번에 이 비율보다 많이 사라지면 사이트 구조가 바뀌었거나 덜 읽은 것일 수 있어 내리지 않는다
 MAX_CLOSE_RATIO = 0.5
 
@@ -135,6 +158,10 @@ def upsert_campaigns(campaigns: list[dict], runs: list[dict] | None = None) -> t
                     for r in runs
                     if r.get("status") == "ok" and r.get("complete") and saved_by_platform.get(r["platform"])
                 }
+                for r in runs:
+                    if r.get("status") == "ok" and r.get("closed_listed"):
+                        n_closed = close_listed(cur, r["platform"], r["closed_listed"])
+                        closed_by_platform[r["platform"]] = closed_by_platform.get(r["platform"], 0) + n_closed
                 psycopg2.extras.execute_batch(cur, RUN_SQL, [
                     {
                         **r,

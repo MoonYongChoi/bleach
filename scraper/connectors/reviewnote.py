@@ -48,16 +48,46 @@ API_LIMIT = 16  # 사이트 화면과 같게 — 100을 주면 첫 쪽(96개)과
 API_PAGE_CAP = 100
 QUICK_DELAY_MS = 500
 FULL_DELAY_MS = 1200
-FULL_CRAWL_HOUR_KST = 3  # 매일 이 시각 회차만 지역별 전체 수집 (매시 17분 실행 → 03:17)
+FULL_CRAWL_HOUR_KST = 3  # DB를 못 볼 때(로컬 dry-run)만 쓰는 예비 규칙
+FULL_CRAWL_EVERY_HOURS = 20
+FULL_RUN_MIN_FETCHED = 3000  # 최신 목록만 읽는 회차는 1,600건이 상한 — 이보다 많으면 지역별 전체 수집 회차
+# 지역별 목록에 섞여 나오는 마감 캠페인 중 이 기간 안에 마감된 것은 "끝났다"고 DB에 알린다
+CLOSED_LOOKBACK_DAYS = 30
+
+LAST_FULL_SQL = """
+select max(started_at) from public.scrape_runs
+where platform = '리뷰노트' and status = 'ok' and fetched > %s
+"""
 
 
 def full_crawl_now() -> bool:
-    """지역별 전체 수집을 할 회차인지. REVIEWNOTE_FULL=1 이면 시각과 상관없이 전체 수집."""
+    """지역별 전체 수집을 할 회차인지. REVIEWNOTE_FULL=1 이면 무조건 전체 수집.
+
+    예전엔 "KST 3시 회차"였는데, GitHub 정기 실행이 하루 3~4번 아무 시각에나 돌아서 11-12 이후 한 번도
+    3시에 걸리지 않았다 → 전체 수집이 없어 일찍 마감된 캠페인이 계속 모집 중으로 남았다 (2026-11-26, 온아헤어).
+    이제는 마지막 전체 수집이 20시간보다 오래됐으면 이번 회차에서 한다.
+    """
     import os
 
     if os.environ.get("REVIEWNOTE_FULL") == "1":
         return True
-    return datetime.now(timezone(timedelta(hours=9))).hour == FULL_CRAWL_HOUR_KST  # 사이트가 이 쪽수에서 목록을 끊는 것으로 보인다 (2026-11-12 실행 로그)
+    if os.environ.get("DATABASE_URL"):
+        try:
+            import psycopg2
+
+            conn = psycopg2.connect(os.environ["DATABASE_URL"])
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(LAST_FULL_SQL, (FULL_RUN_MIN_FETCHED,))
+                    last = cur.fetchone()[0]
+            finally:
+                conn.close()
+            due = last is None or datetime.now(timezone.utc) - last > timedelta(hours=FULL_CRAWL_EVERY_HOURS)
+            print(f"[리뷰노트] 마지막 지역별 전체 수집: {last} → 이번 회차 {'전체' if due else '최신 목록만'}")
+            return due
+        except Exception as e:  # noqa: BLE001 - DB를 못 보면 시각 규칙으로
+            print(f"[리뷰노트] 마지막 전체 수집 시각 조회 실패: {e}")
+    return datetime.now(timezone(timedelta(hours=9))).hour == FULL_CRAWL_HOUR_KST
 
 
 def obj_to_raw(obj: dict) -> Optional[RawCampaign]:
@@ -119,6 +149,7 @@ class ReviewnoteConnector(Connector):
 
     def fetch(self) -> list[RawCampaign]:
         self.complete = False
+        self.closed_listed: dict[str, str] = {}
         try:
             return self._fetch_api()
         except Exception as e:  # noqa: BLE001 - API가 막혀도 첫 화면 96개는 받는다
@@ -172,6 +203,8 @@ class ReviewnoteConnector(Connector):
                 return data["body"]
 
             now_iso = datetime.now(timezone.utc).isoformat()
+            closed_since = (datetime.now(timezone.utc) - timedelta(days=CLOSED_LOOKBACK_DAYS)).isoformat()
+            closed: dict[str, str] = {}
 
             def read_list(params: dict) -> bool:
                 """한 목록을 끝까지. 100쪽을 다 읽고도 더 있으면(사이트 상한) True.
@@ -185,8 +218,13 @@ class ReviewnoteConnector(Connector):
                     objects = body.get("objects") or []
                     open_count = 0
                     for obj in objects:
-                        if (obj.get("applyEndAt") or "9999") < now_iso:
-                            continue  # 이미 마감
+                        end = obj.get("applyEndAt") or "9999"
+                        if end < now_iso:
+                            # 이미 마감 — 모집 기간을 줄여 일찍 마감한 캠페인도 여기로 온다(마감일이 앞당겨짐).
+                            # 우리 DB에 모집 중으로 남아 있으면 내리도록 알려 준다 (loader.close_listed)
+                            if end >= closed_since and obj.get("id") is not None:
+                                closed[DETAIL_URL.format(id=obj["id"])] = end
+                            continue
                         open_count += 1
                         raw = obj_to_raw(obj)
                         if raw and raw.source_url not in seen:
@@ -225,6 +263,10 @@ class ReviewnoteConnector(Connector):
             browser.close()
 
         got = len(campaigns)
+        # 마감 목록에 보인 캠페인 (url → 실제 마감 시각 UTC ISO) — 다시 모집 중으로 보인 건 빼고
+        self.closed_listed = {url: end for url, end in closed.items() if url not in seen}
+        if self.closed_listed:
+            print(f"[리뷰노트] 목록에 마감으로 나온 캠페인 {len(self.closed_listed)}건 (최근 {CLOSED_LOOKBACK_DAYS}일)")
         # 하루 한 번 전체 수집에서, 막히지 않고 시/군/구까지 상한 없이 다 읽었을 때만 "끝까지 읽음"
         # (목록에서 사라진 캠페인 종료 처리의 조건). 매시간 수집은 최신 1,600건만 보므로 종료 처리하지 않는다.
         self.complete = full and not capped and blocked is None
