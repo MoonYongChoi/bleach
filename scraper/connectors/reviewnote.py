@@ -60,6 +60,34 @@ where platform = '리뷰노트' and status = 'ok' and fetched > %s
 """
 
 
+STALE_RECHECK_LIMIT = 200  # 최신 목록만 읽는 회차에서 추가로 보내는 검색 요청 수 (회차당 약 2분)
+STALE_SQL = """
+select source_url, title from public.campaigns
+where platform = '리뷰노트' and is_active and last_seen_at < now() - interval '1 day'
+order by random() limit %s
+"""
+
+
+def _stale_rows(limit: int) -> list[tuple[str, str]]:
+    import os
+
+    if not os.environ.get("DATABASE_URL"):
+        return []
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        try:
+            with conn.cursor() as cur:
+                cur.execute(STALE_SQL, (limit,))
+                return [(u, t) for u, t in cur.fetchall() if t]
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 - 다시 확인은 덤이다
+        print(f"[리뷰노트] 오래 못 본 캠페인 조회 실패: {e}")
+        return []
+
+
 def full_crawl_now() -> bool:
     """지역별 전체 수집을 할 회차인지. REVIEWNOTE_FULL=1 이면 무조건 전체 수집.
 
@@ -238,14 +266,54 @@ class ReviewnoteConnector(Connector):
                     page.wait_for_timeout(delay_ms)  # 사이트 부담 줄이기
                 return True
 
+            def recheck_stale() -> None:
+                """한동안 목록에서 못 본 모집 중 캠페인을 제목 검색(q=)으로 하나씩 다시 확인한다.
+
+                지역별 목록에도 일찍 마감된 캠페인이 다 나오지는 않는다(2026-11-26: 수원시를 다 읽고도 66건이 남음).
+                검색은 마감된 캠페인도 돌려준다(온아헤어: applyEndAt 11-24). 찾으면 마감/모집 중을 바로 반영하고,
+                못 찾으면 그대로 둔다. 못 찾는 건이 매번 앞을 차지하지 않게 무작위로 고른다.
+                """
+                stale = _stale_rows(STALE_RECHECK_LIMIT)
+                found_open = found_closed = 0
+                for url, title in stale:
+                    cid = url.rsplit("/", 1)[-1]
+                    try:
+                        body = call("/api/v2/campaigns", {"s": "default", "limit": API_LIMIT, "page": 0, "q": title})
+                    except RuntimeError as e:
+                        print(f"[리뷰노트] 다시 확인 중 멈춤: {str(e)[:120]}")
+                        break
+                    obj = next((o for o in body.get("objects") or [] if str(o.get("id")) == cid), None)
+                    if obj:
+                        end = obj.get("applyEndAt") or "9999"
+                        if end < now_iso:
+                            closed[url] = end
+                            found_closed += 1
+                        else:
+                            raw = obj_to_raw(obj)
+                            if raw and raw.source_url not in seen:
+                                seen.add(raw.source_url)
+                                campaigns.append(raw)
+                            found_open += 1
+                    page.wait_for_timeout(delay_ms)
+                if stale:
+                    print(f"[리뷰노트] 오래 못 본 캠페인 {len(stale)}건 다시 확인 → 마감 {found_closed}, 모집 중 {found_open}, "
+                          f"못 찾음 {len(stale) - found_closed - found_open}")
+
             split: list[str] = []
             blocked = None
             try:
                 # 지역 없이 본 목록(모집 중만, 최신 1,600건까지) — 매시간은 이것만
                 if read_list({}):
                     capped.append("전체")
+                if not full:
+                    recheck_stale()
                 if full:
                     sidos = call("/api/v2/sidos", {}) or []
+                    # 사이트가 요청 1,500번쯤에서 막는다(2026-11-26: 광주에서 403) — 날마다 시작 시/도를 바꿔
+                    # 막히더라도 매일 같은 지역만 빠지지 않게 한다
+                    if sidos:
+                        start = datetime.now(timezone(timedelta(hours=9))).timetuple().tm_yday % len(sidos)
+                        sidos = sidos[start:] + sidos[:start]
                     for sido in sidos:
                         name = sido.get("name")
                         if not name or not read_list({"city": name}):
